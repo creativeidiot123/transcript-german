@@ -47,8 +47,9 @@ recognizers.
 `.installed-revision` marker is written only after all assets finish. Startup readiness uses the
 marker, pinned revision, presence, and expected sizes.
 
-Large ONNX assets and VAD use known SHA-256 values. The token file is pinned to the immutable
-Hugging Face revision and size-sanity checked.
+Every downloaded model asset, including the token vocabulary and VAD, is pinned to the immutable
+upstream revision/version and verified against an exact byte length and SHA-256 before it can be
+committed to the install.
 
 ## Caption session lifecycle
 
@@ -72,7 +73,9 @@ objects exactly once.
 
 A user Stop first stops audio capture and closes the queue, allowing already accepted chunks to
 drain. The recognizer then flushes VAD once so the trailing partial utterance can be finalized.
-Failure stops instead cancel the session rather than spending more time decoding stale queued audio.
+During that drain/flush, the session state remains `STOPPING` while finalized trailing text may still
+append. Failure stops instead cancel the session rather than spending more time decoding stale
+queued audio.
 
 ## State and durability
 

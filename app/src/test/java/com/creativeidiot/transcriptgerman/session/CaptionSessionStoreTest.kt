@@ -35,6 +35,24 @@ class CaptionSessionStoreTest {
     }
 
     @Test
+    fun lateActivityCallbacks_doNotLeaveStoppingState() {
+        val store = CaptionSessionStore()
+        store.markStarting()
+        store.markListening()
+        store.markStopping()
+
+        store.markListening()
+        store.markSpeechDetected(true)
+        store.markSpeechDetected(false)
+        store.markTranscribing(true)
+        store.markTranscribing(false)
+        store.appendFinal("Letzter Satz")
+
+        assertEquals(CaptionSessionStatus.STOPPING, store.state.value.status)
+        assertEquals(listOf("Letzter Satz"), store.state.value.lines.map { it.text })
+    }
+
+    @Test
     fun transcript_isBoundedAndCanBeCleared() {
         val store = CaptionSessionStore()
 

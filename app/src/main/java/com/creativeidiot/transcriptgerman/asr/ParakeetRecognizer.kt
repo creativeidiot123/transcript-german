@@ -16,41 +16,56 @@ class ParakeetRecognizer(
     private val onTranscribing: (Boolean) -> Unit,
     private val onFinal: (String) -> Unit,
 ) : AutoCloseable {
-    private val vad = Vad(
-        config = VadModelConfig(
-            sileroVadModelConfig = SileroVadModelConfig(
-                model = File(modelDirectory, "silero_vad.onnx").absolutePath,
-                threshold = 0.5f,
-                minSilenceDuration = 0.3f,
-                minSpeechDuration = 0.2f,
-                windowSize = 512,
-            ),
-            sampleRate = SAMPLE_RATE,
-            numThreads = 1,
-            provider = "cpu",
-        ),
-    )
+    private val vad: Vad
+    private val recognizer: OfflineRecognizer
 
-    private val recognizer = OfflineRecognizer(
-        config = OfflineRecognizerConfig(
-            featConfig = FeatureConfig(
-                sampleRate = SAMPLE_RATE,
-                featureDim = 80,
-            ),
-            modelConfig = OfflineModelConfig(
-                transducer = OfflineTransducerModelConfig(
-                    encoder = File(modelDirectory, "encoder.int8.onnx").absolutePath,
-                    decoder = File(modelDirectory, "decoder.int8.onnx").absolutePath,
-                    joiner = File(modelDirectory, "joiner.int8.onnx").absolutePath,
+    init {
+        val createdVad = Vad(
+            config = VadModelConfig(
+                sileroVadModelConfig = SileroVadModelConfig(
+                    model = File(modelDirectory, "silero_vad.onnx").absolutePath,
+                    threshold = 0.5f,
+                    minSilenceDuration = 0.3f,
+                    minSpeechDuration = 0.2f,
+                    windowSize = 512,
                 ),
-                tokens = File(modelDirectory, "tokens.txt").absolutePath,
-                numThreads = 4,
+                sampleRate = SAMPLE_RATE,
+                numThreads = 1,
                 provider = "cpu",
-                modelType = "nemo_transducer",
             ),
-            decodingMethod = "greedy_search",
-        ),
-    )
+        )
+        vad = createdVad
+
+        recognizer = try {
+            OfflineRecognizer(
+                config = OfflineRecognizerConfig(
+                    featConfig = FeatureConfig(
+                        sampleRate = SAMPLE_RATE,
+                        featureDim = 80,
+                    ),
+                    modelConfig = OfflineModelConfig(
+                        transducer = OfflineTransducerModelConfig(
+                            encoder = File(modelDirectory, "encoder.int8.onnx").absolutePath,
+                            decoder = File(modelDirectory, "decoder.int8.onnx").absolutePath,
+                            joiner = File(modelDirectory, "joiner.int8.onnx").absolutePath,
+                        ),
+                        tokens = File(modelDirectory, "tokens.txt").absolutePath,
+                        numThreads = 4,
+                        provider = "cpu",
+                        modelType = "nemo_transducer",
+                    ),
+                    decodingMethod = "greedy_search",
+                ),
+            )
+        } catch (failure: Throwable) {
+            try {
+                createdVad.release()
+            } catch (releaseFailure: Throwable) {
+                failure.addSuppressed(releaseFailure)
+            }
+            throw failure
+        }
+    }
 
     private var speechDetected = false
     private var closed = false

@@ -39,6 +39,15 @@ class ModelInstallVerifierTest {
     }
 
     @Test
+    fun productionBundle_requiresExactSizeAndDigestForEveryAsset() {
+        assertTrue(
+            PrimelineModelSpec.bundle.files.all { spec ->
+                spec.exactBytes != null && spec.sha256 != null
+            },
+        )
+    }
+
+    @Test
     fun missingMarker_isNotInstalled() {
         val directory = bundle.directory(filesDir).apply { mkdirs() }
         File(directory, "encoder.onnx").writeBytes(byteArrayOf(1, 2, 3, 4))

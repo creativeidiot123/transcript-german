@@ -38,6 +38,15 @@ fun CaptionScreen(
     onClearTranscript: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val lines = state.session.lines
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(lines.size) {
+        if (lines.isNotEmpty()) {
+            listState.scrollToItem(lines.size)
+        }
+    }
+
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         Surface(
             modifier = Modifier
@@ -50,33 +59,63 @@ fun CaptionScreen(
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Text(
-                    text = stringResource(R.string.screen_title),
-                    style = MaterialTheme.typography.headlineMedium,
-                )
-                Text(
-                    text = stringResource(R.string.screen_subtitle),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentPadding = PaddingValues(bottom = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    item {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.screen_title),
+                                style = MaterialTheme.typography.headlineMedium,
+                            )
+                            Text(
+                                text = stringResource(R.string.screen_subtitle),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
 
-                ModelStatus(
-                    model = state.model,
-                    onDownloadModel = onDownloadModel,
-                )
+                            ModelStatus(
+                                model = state.model,
+                                onDownloadModel = onDownloadModel,
+                            )
 
-                HorizontalDivider()
+                            HorizontalDivider()
 
-                SessionStatus(state)
+                            SessionStatus(state)
 
-                Text(
-                    text = stringResource(R.string.latency_note),
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                            Text(
+                                text = stringResource(R.string.latency_note),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
 
-                Transcript(
-                    state = state,
-                    modifier = Modifier.weight(1f),
-                )
+                    if (lines.isEmpty()) {
+                        item {
+                            Text(
+                                text = stringResource(R.string.empty_transcript),
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    } else {
+                        items(
+                            items = lines,
+                            key = { it.id },
+                        ) { line ->
+                            Text(
+                                text = line.text,
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        }
+                    }
+                }
 
                 Controls(
                     state = state,
@@ -190,46 +229,6 @@ private fun ErrorText(text: String) {
         color = MaterialTheme.colorScheme.error,
         style = MaterialTheme.typography.bodyMedium,
     )
-}
-
-@Composable
-private fun Transcript(
-    state: CaptionUiState,
-    modifier: Modifier = Modifier,
-) {
-    val lines = state.session.lines
-    val listState = rememberLazyListState()
-
-    LaunchedEffect(lines.size) {
-        if (lines.isNotEmpty()) {
-            listState.scrollToItem(lines.lastIndex)
-        }
-    }
-
-    if (lines.isEmpty()) {
-        Text(
-            text = stringResource(R.string.empty_transcript),
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = modifier.fillMaxWidth(),
-        )
-    } else {
-        LazyColumn(
-            state = listState,
-            modifier = modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            items(
-                items = lines,
-                key = { it.id },
-            ) { line ->
-                Text(
-                    text = line.text,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-            }
-        }
-    }
 }
 
 @Composable

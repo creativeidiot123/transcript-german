@@ -58,7 +58,8 @@ internal object PrimelineModelSpec {
             ModelFileSpec(
                 name = "tokens.txt",
                 url = MODEL_BASE + "tokens.txt?download=true",
-                minimumBytes = 90_000,
+                exactBytes = 102_132,
+                sha256 = "ba8e4007c65f4bb4358ffe2ecc13d9ccc7a10351151065242b5c3a943e685742",
             ),
             ModelFileSpec(
                 name = "silero_vad.onnx",

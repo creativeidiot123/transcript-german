@@ -45,7 +45,13 @@ class CaptionSessionStore {
     }
 
     fun markListening() {
-        _state.update { it.copy(status = CaptionSessionStatus.LISTENING) }
+        _state.update { current ->
+            if (current.status == CaptionSessionStatus.STOPPING) {
+                current
+            } else {
+                current.copy(status = CaptionSessionStatus.LISTENING)
+            }
+        }
     }
 
     fun markStopping() {
@@ -54,25 +60,33 @@ class CaptionSessionStore {
 
     fun markSpeechDetected(detected: Boolean) {
         _state.update { current ->
-            current.copy(
-                status = if (detected) {
-                    CaptionSessionStatus.SPEECH_DETECTED
-                } else {
-                    CaptionSessionStatus.LISTENING
-                },
-            )
+            if (current.status == CaptionSessionStatus.STOPPING) {
+                current
+            } else {
+                current.copy(
+                    status = if (detected) {
+                        CaptionSessionStatus.SPEECH_DETECTED
+                    } else {
+                        CaptionSessionStatus.LISTENING
+                    },
+                )
+            }
         }
     }
 
     fun markTranscribing(transcribing: Boolean) {
         _state.update { current ->
-            current.copy(
-                status = if (transcribing) {
-                    CaptionSessionStatus.TRANSCRIBING
-                } else {
-                    CaptionSessionStatus.LISTENING
-                },
-            )
+            if (current.status == CaptionSessionStatus.STOPPING) {
+                current
+            } else {
+                current.copy(
+                    status = if (transcribing) {
+                        CaptionSessionStatus.TRANSCRIBING
+                    } else {
+                        CaptionSessionStatus.LISTENING
+                    },
+                )
+            }
         }
     }
 
@@ -83,7 +97,11 @@ class CaptionSessionStore {
         val line = CaptionLine(nextId.getAndIncrement(), trimmed)
         _state.update { current ->
             current.copy(
-                status = CaptionSessionStatus.LISTENING,
+                status = if (current.status == CaptionSessionStatus.STOPPING) {
+                    CaptionSessionStatus.STOPPING
+                } else {
+                    CaptionSessionStatus.LISTENING
+                },
                 lines = (current.lines + line).takeLast(MAX_LINES),
             )
         }
