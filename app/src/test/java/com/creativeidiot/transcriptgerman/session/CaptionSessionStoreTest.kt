@@ -22,6 +22,19 @@ class CaptionSessionStoreTest {
     }
 
     @Test
+    fun markStopping_preservesTranscriptAndMovesToStopping() {
+        val store = CaptionSessionStore()
+        store.markStarting()
+        store.markListening()
+        store.appendFinal("Hallo Welt")
+
+        store.markStopping()
+
+        assertEquals(CaptionSessionStatus.STOPPING, store.state.value.status)
+        assertEquals(listOf("Hallo Welt"), store.state.value.lines.map { it.text })
+    }
+
+    @Test
     fun transcript_isBoundedAndCanBeCleared() {
         val store = CaptionSessionStore()
 

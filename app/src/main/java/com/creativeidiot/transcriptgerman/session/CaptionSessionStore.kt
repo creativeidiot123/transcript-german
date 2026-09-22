@@ -48,6 +48,10 @@ class CaptionSessionStore {
         _state.update { it.copy(status = CaptionSessionStatus.LISTENING) }
     }
 
+    fun markStopping() {
+        _state.update { it.copy(status = CaptionSessionStatus.STOPPING) }
+    }
+
     fun markSpeechDetected(detected: Boolean) {
         _state.update { current ->
             current.copy(
