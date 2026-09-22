@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.TranscriptGerman" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>
