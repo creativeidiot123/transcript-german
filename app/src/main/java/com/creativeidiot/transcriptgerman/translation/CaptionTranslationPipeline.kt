@@ -124,6 +124,7 @@ internal class CaptionTranslationPipeline(
         if (failureSignalled.compareAndSet(false, true)) {
             onFailure()
         }
+        worker.cancel()
     }
 
     private companion object {
