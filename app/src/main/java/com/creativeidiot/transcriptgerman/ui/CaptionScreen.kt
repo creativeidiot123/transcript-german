@@ -4,13 +4,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -33,6 +33,7 @@ import com.creativeidiot.transcriptgerman.model.AsrBackend
 import com.creativeidiot.transcriptgerman.model.ModelInstallFailure
 import com.creativeidiot.transcriptgerman.model.ModelInstallState
 import com.creativeidiot.transcriptgerman.session.CaptionFailure
+import com.creativeidiot.transcriptgerman.session.CaptionLine
 import com.creativeidiot.transcriptgerman.session.CaptionSessionStatus
 
 @Composable
@@ -40,6 +41,7 @@ fun CaptionScreen(
     state: CaptionUiState,
     onBackendSelected: (AsrBackend) -> Unit,
     onDownloadModel: () -> Unit,
+    onDownloadTranslationModel: () -> Unit,
     onStartListening: () -> Unit,
     onStopListening: () -> Unit,
     onClearTranscript: () -> Unit,
@@ -49,7 +51,7 @@ fun CaptionScreen(
     val partialText = state.session.partialText
     val listState = rememberLazyListState()
 
-    LaunchedEffect(lines.size, partialText) {
+    LaunchedEffect(lines.size, partialText, state.session.partialEnglishText) {
         val lastTranscriptIndex = lines.size + if (partialText.isNotBlank()) 1 else 0
         if (lastTranscriptIndex > 0) {
             listState.scrollToItem(lastTranscriptIndex)
@@ -74,7 +76,7 @@ fun CaptionScreen(
                         .weight(1f)
                         .fillMaxWidth(),
                     contentPadding = PaddingValues(bottom = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     item {
                         Column(
@@ -96,11 +98,25 @@ fun CaptionScreen(
                                 onSelected = onBackendSelected,
                             )
 
+                            Text(
+                                text = stringResource(R.string.recognition_model_label),
+                                style = MaterialTheme.typography.titleSmall,
+                            )
                             ModelStatus(
                                 backend = state.selectedBackend,
                                 model = state.model,
                                 downloadEnabled = !state.isAnyModelDownloading,
                                 onDownloadModel = onDownloadModel,
+                            )
+
+                            Text(
+                                text = stringResource(R.string.translation_model_label),
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            TranslationModelStatus(
+                                model = state.translationModel,
+                                downloadEnabled = !state.isAnyModelDownloading,
+                                onDownloadModel = onDownloadTranslationModel,
                             )
 
                             HorizontalDivider()
@@ -133,18 +149,15 @@ fun CaptionScreen(
                             items = lines,
                             key = { it.id },
                         ) { line ->
-                            Text(
-                                text = line.text,
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
+                            CaptionPair(line)
                         }
 
                         if (partialText.isNotBlank()) {
                             item(key = "partial-caption") {
-                                Text(
-                                    text = partialText,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                CaptionPair(
+                                    german = partialText,
+                                    english = state.session.partialEnglishText,
+                                    pending = true,
                                 )
                             }
                         }
@@ -159,6 +172,44 @@ fun CaptionScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun CaptionPair(line: CaptionLine) {
+    CaptionPair(
+        german = line.text,
+        english = line.englishText,
+        pending = line.englishText == null,
+    )
+}
+
+@Composable
+private fun CaptionPair(
+    german: String,
+    english: String?,
+    pending: Boolean,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.caption_german, german),
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Text(
+            text = stringResource(
+                R.string.caption_english,
+                english ?: if (pending) {
+                    stringResource(R.string.translation_pending)
+                } else {
+                    ""
+                },
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -243,6 +294,38 @@ private fun ModelStatus(
     downloadEnabled: Boolean,
     onDownloadModel: () -> Unit,
 ) {
+    InstallStatus(
+        model = model,
+        downloadEnabled = downloadEnabled,
+        downloadLabel = when (backend) {
+            AsrBackend.PRIMELINE -> stringResource(R.string.download_primeline_model)
+            AsrBackend.NEMOTRON -> stringResource(R.string.download_nemotron_model)
+        },
+        onDownloadModel = onDownloadModel,
+    )
+}
+
+@Composable
+private fun TranslationModelStatus(
+    model: ModelInstallState,
+    downloadEnabled: Boolean,
+    onDownloadModel: () -> Unit,
+) {
+    InstallStatus(
+        model = model,
+        downloadEnabled = downloadEnabled,
+        downloadLabel = stringResource(R.string.download_bergamot_model),
+        onDownloadModel = onDownloadModel,
+    )
+}
+
+@Composable
+private fun InstallStatus(
+    model: ModelInstallState,
+    downloadEnabled: Boolean,
+    downloadLabel: String,
+    onDownloadModel: () -> Unit,
+) {
     when (model) {
         ModelInstallState.Missing -> {
             Text(stringResource(R.string.model_missing))
@@ -251,12 +334,7 @@ private fun ModelStatus(
                 enabled = downloadEnabled,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(
-                    when (backend) {
-                        AsrBackend.PRIMELINE -> stringResource(R.string.download_primeline_model)
-                        AsrBackend.NEMOTRON -> stringResource(R.string.download_nemotron_model)
-                    },
-                )
+                Text(downloadLabel)
             }
         }
 
@@ -330,9 +408,14 @@ private fun SessionStatus(state: CaptionUiState) {
         ErrorText(
             when (failure) {
                 CaptionFailure.MODEL_NOT_READY -> stringResource(R.string.error_model_not_ready)
+                CaptionFailure.TRANSLATION_MODEL_NOT_READY ->
+                    stringResource(R.string.error_translation_model_not_ready)
                 CaptionFailure.AUDIO_UNAVAILABLE -> stringResource(R.string.error_audio_unavailable)
                 CaptionFailure.ASR_INITIALIZATION -> stringResource(R.string.error_asr_init)
+                CaptionFailure.TRANSLATION_INITIALIZATION ->
+                    stringResource(R.string.error_translation_init)
                 CaptionFailure.AUDIO_BACKPRESSURE -> stringResource(R.string.error_backpressure)
+                CaptionFailure.TRANSLATION -> stringResource(R.string.error_translation)
                 CaptionFailure.UNEXPECTED -> stringResource(R.string.error_unexpected)
             },
         )
@@ -356,7 +439,9 @@ private fun Controls(
     onClearTranscript: () -> Unit,
 ) {
     val running = state.session.status != CaptionSessionStatus.IDLE
-    val modelReady = state.model == ModelInstallState.Ready
+    val modelsReady =
+        state.model == ModelInstallState.Ready &&
+            state.translationModel == ModelInstallState.Ready
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -364,7 +449,7 @@ private fun Controls(
     ) {
         Button(
             onClick = if (running) onStopListening else onStartListening,
-            enabled = running || modelReady,
+            enabled = running || modelsReady,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
