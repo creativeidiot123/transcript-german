@@ -40,7 +40,10 @@ internal class CaptionTranslationPipeline(
                 when (command) {
                     Command.PartialWake -> {
                         partialWakeQueued.set(false)
-                        pendingPartial.getAndSet(null)?.let(::translatePartial)
+                        val partial = pendingPartial.getAndSet(null)
+                        if (partial != null) {
+                            translatePartial(partial)
+                        }
                     }
 
                     is Command.Final -> translateFinal(command)
