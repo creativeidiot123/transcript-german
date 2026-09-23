@@ -10,6 +10,7 @@ import com.creativeidiot.transcriptgerman.model.ModelRepository
 import com.creativeidiot.transcriptgerman.session.CaptionSessionState
 import com.creativeidiot.transcriptgerman.session.CaptionSessionStatus
 import com.creativeidiot.transcriptgerman.session.CaptionSessionStore
+import com.creativeidiot.transcriptgerman.translation.BergamotModelRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,6 +22,7 @@ import kotlinx.coroutines.launch
 data class CaptionUiState(
     val selectedBackend: AsrBackend,
     val model: ModelInstallState,
+    val translationModel: ModelInstallState,
     val isAnyModelDownloading: Boolean,
     val session: CaptionSessionState,
     val microphonePermissionDenied: Boolean,
@@ -28,6 +30,7 @@ data class CaptionUiState(
 
 class CaptionViewModel(
     private val modelRepository: ModelRepository,
+    private val bergamotModelRepository: BergamotModelRepository,
     private val sessionStore: CaptionSessionStore,
 ) : ViewModel() {
     private val selectedBackend = MutableStateFlow(
@@ -39,17 +42,19 @@ class CaptionViewModel(
 
     val state: StateFlow<CaptionUiState> = combine(
         modelRepository.states,
+        bergamotModelRepository.state,
         sessionStore.state,
         selectedBackend,
         microphonePermissionDenied,
-    ) { modelStates, session, selected, permissionDenied ->
+    ) { modelStates, translationModel, session, selected, permissionDenied ->
         val effectiveBackend = session.activeBackend ?: selected
         CaptionUiState(
             selectedBackend = effectiveBackend,
             model = modelStates.getValue(effectiveBackend),
-            isAnyModelDownloading = modelStates.values.any {
-                it is ModelInstallState.Downloading
-            },
+            translationModel = translationModel,
+            isAnyModelDownloading =
+                modelStates.values.any { it is ModelInstallState.Downloading } ||
+                    translationModel is ModelInstallState.Downloading,
             session = session,
             microphonePermissionDenied = permissionDenied,
         )
@@ -61,7 +66,7 @@ class CaptionViewModel(
 
     fun selectBackend(backend: AsrBackend) {
         if (sessionStore.state.value.status != CaptionSessionStatus.IDLE) return
-        if (modelRepository.states.value.values.any { it is ModelInstallState.Downloading }) return
+        if (isAnyModelDownloading()) return
         selectedBackend.value = backend
     }
 
@@ -71,6 +76,14 @@ class CaptionViewModel(
         val backend = selectedBackend.value
         downloadJob = viewModelScope.launch {
             modelRepository.download(backend)
+        }
+    }
+
+    fun downloadTranslationModel() {
+        if (downloadJob?.isActive == true) return
+
+        downloadJob = viewModelScope.launch {
+            bergamotModelRepository.download()
         }
     }
 
@@ -100,16 +113,22 @@ class CaptionViewModel(
         val session = sessionStore.state.value
         val backend = session.activeBackend ?: selectedBackend.value
         val modelStates = modelRepository.states.value
+        val translationModel = bergamotModelRepository.state.value
         return CaptionUiState(
             selectedBackend = backend,
             model = modelStates.getValue(backend),
-            isAnyModelDownloading = modelStates.values.any {
-                it is ModelInstallState.Downloading
-            },
+            translationModel = translationModel,
+            isAnyModelDownloading =
+                modelStates.values.any { it is ModelInstallState.Downloading } ||
+                    translationModel is ModelInstallState.Downloading,
             session = session,
             microphonePermissionDenied = false,
         )
     }
+
+    private fun isAnyModelDownloading(): Boolean =
+        modelRepository.states.value.values.any { it is ModelInstallState.Downloading } ||
+            bergamotModelRepository.state.value is ModelInstallState.Downloading
 
     class Factory(private val container: AppContainer) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -117,6 +136,7 @@ class CaptionViewModel(
             if (modelClass.isAssignableFrom(CaptionViewModel::class.java)) {
                 return CaptionViewModel(
                     modelRepository = container.modelRepository,
+                    bergamotModelRepository = container.bergamotModelRepository,
                     sessionStore = container.sessionStore,
                 ) as T
             }

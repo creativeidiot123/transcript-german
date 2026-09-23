@@ -58,6 +58,33 @@ class CaptionSessionStoreTest {
     }
 
     @Test
+    fun translationsPairWithTheirGermanSourceAndRejectStalePartials() {
+        val store = CaptionSessionStore()
+        store.markStarting(AsrBackend.NEMOTRON)
+        store.markListening()
+
+        store.updatePartial("Guten")
+        store.updatePartial("Guten Morgen")
+        store.updatePartialTranslation("Guten", "Good")
+        assertNull(store.state.value.partialEnglishText)
+
+        store.updatePartialTranslation("Guten Morgen", "Good morning")
+        assertEquals("Good morning", store.state.value.partialEnglishText)
+
+        val lineId = store.appendFinal("Guten Morgen")
+        assertEquals(null, store.state.value.lines.single().englishText)
+
+        store.updateFinalTranslation(requireNotNull(lineId), "Good morning")
+        assertEquals("Good morning", store.state.value.lines.single().englishText)
+        assertEquals("", store.state.value.partialText)
+        assertNull(store.state.value.partialEnglishText)
+
+        store.clearTranscript()
+        store.updateFinalTranslation(lineId, "Late translation")
+        assertEquals(emptyList<CaptionLine>(), store.state.value.lines)
+    }
+
+    @Test
     fun markStopping_preservesTranscriptAndMovesToStopping() {
         val store = CaptionSessionStore()
         store.markStarting(AsrBackend.PRIMELINE)

@@ -2,14 +2,19 @@
 
 ## Owner map
 
-    Model install authority/truth   ModelInstallVerifier + per-backend app-private files
-    Model install mutation          ModelRepository
+    ASR install authority/truth     ModelInstallVerifier + per-backend app-private files
+    ASR install mutation            ModelRepository
+    Translation install truth       BergamotModelInstallVerifier + app-private extracted bundle
+    Translation install mutation    BergamotModelRepository
+    Model download serialization    AppContainer shared Mutex
     Backend picker state            CaptionViewModel
     Active-session backend          CaptionService start input
     Screen projection               CaptionViewModel
-    Session/transcript truth        CaptionSessionStore (process-local)
+    Bilingual session truth         CaptionSessionStore (process-local)
     Active-backend UI projection    CaptionSessionStore from CaptionService input
     Microphone/ASR lifecycle        CaptionService
+    Translation work lifecycle      CaptionTranslationPipeline owned by CaptionService session
+    Bergamot native model           BergamotTranslator
     AudioRecord resource            AudioCapture
     Primeline native resources      ParakeetRecognizer
     Nemotron native resources       NemotronRecognizer
@@ -17,8 +22,8 @@
     Dependency construction         TranscriptApplication -> AppContainer
     Navigation                      Single Activity; no navigation graph
 
-There is intentionally no Room, DataStore, backend, use-case layer, DI framework, or durable
-transcript/backend-selection store in this MVP.
+There is intentionally no Room, DataStore, cloud backend, use-case layer, DI framework, or durable
+transcript/backend-selection store.
 
 ## Dependency flow
 
@@ -26,12 +31,13 @@ transcript/backend-selection store in this MVP.
        | actions/state
        v
     CaptionViewModel ---- selected backend ----> MainActivity
-       |                                      mic permission |
-       | model state/install                               |
+       |         |                            mic permission |
+       |         +-- Bergamot model state/install          |
+       | ASR model state/install                           |
        v                                                   v
-    ModelRepository                              CaptionService start Intent
-                                                        |
-                                                        | fixed backend for session
+ ModelRepository + BergamotModelRepository       CaptionService start Intent
+        \              /                               |
+         shared download mutex                           | fixed ASR backend
                                                         v
                                                    AudioCapture
                                                         |
@@ -40,18 +46,24 @@ transcript/backend-selection store in this MVP.
                                   +---------------------+---------------------+
                                   |                                           |
                            ParakeetRecognizer                         NemotronRecognizer
-                           Silero VAD + offline                       persistent online
-                           NeMo transducer                            NeMo transducer
-                                  |                                           |
+                           VAD + offline ASR                          streaming ASR
+                                  | final German                 partial/final German
                                   +---------------------+---------------------+
                                                         |
+                                             CaptionTranslationPipeline
+                                             latest partial / ordered finals
+                                                        |
+                                                BergamotTranslator
+                                                   German -> English
+                                                        |
                                                 CaptionSessionStore
+                                           paired German + English state
                                                         |
                                                         v
                                                 CaptionViewModel/UI
 
-The UI never opens the microphone, downloads model files directly, constructs native recognizers,
-or chooses a backend after a session has started.
+The UI never opens the microphone, downloads model files directly, constructs native ASR/translation
+engines, or chooses a backend after a session starts.
 
 ## Backend selection
 
@@ -62,91 +74,99 @@ caption session is active.
 
 MainActivity captures the selected backend when Start is tapped and includes that stable value as
 an explicit Intent extra after microphone permission succeeds. CaptionService resolves that input
-once, records it in CaptionSessionStore for screen projection, and passes it through the session
-job. A recreated Activity/ViewModel therefore renders the backend actually in use, and a later UI
-selection cannot mutate an already-running recognizer.
+once, records it in CaptionSessionStore for screen projection, and passes it through the session.
+A recreated Activity therefore renders the backend actually in use.
 
 ## Model installation
 
-ModelRepository owns one state entry per AsrBackend and serializes all model download attempts with
-one mutex. Each backend maps to one immutable ModelBundleSpec and one separate app-private
-directory. The repository never treats one backend's files as satisfying another backend.
+AppContainer owns one download Mutex shared by ModelRepository and BergamotModelRepository. This
+keeps the product's one-at-a-time model-download contract without making either repository own the
+other.
 
-Each remote file is written to <name>.part, verified, and renamed inside the same app-private
-directory. The final .installed-revision marker is written only after all assets finish. Startup
-readiness uses the marker, pinned revision, presence, and expected sizes.
+ModelRepository retains independent immutable ASR bundle specs/directories for Primeline and
+Nemotron. Each remote file is written to a partial file and verified before the revision marker is
+committed.
 
-Primeline retains its existing bundle, including Silero VAD. Nemotron uses the sherpa-onnx
-Nemotron 3.5 multilingual streaming 560-ms INT8 export. Download URLs are revision-pinned; all
-assets have exact byte lengths and the ONNX graphs also have pinned SHA-256 digests.
+BergamotModelRepository downloads the official de-en-base v2 tar.gz into app-private storage,
+verifies the entire archive against the pinned SHA-256 from the Bergamot model registry, extracts
+into a staging directory, rejects archive links/path traversal, verifies the required model,
+SentencePiece vocabulary, lexical shortlist, and config files, writes an archive-SHA marker, then
+renames the staging directory into its final install location. Interrupted archive/staging files are
+not treated as installed.
+
+The translation bundle is independent of ASR selection because both recognition backends consume
+the same German-to-English translator.
 
 ## Caption session lifecycle
 
-CaptionService is a non-exported foreground service with the microphone service type. It owns a
-structured coroutine scope for the service lifetime and a single session Job. Repeated Start while
-that Job is active is ignored.
+CaptionService is a non-exported foreground service with microphone service type. It owns a
+structured service scope and one session Job. Repeated Start while that job is active is ignored.
 
-AudioCapture owns exactly one AudioRecord and capture thread. Stop is idempotent and attempts to
-unblock a pending read before joining the thread. All recorder paths release the native recorder in
-finally.
+A session first resolves the selected ASR files and shared Bergamot files. BergamotTranslator loads
+one de->en native model for that session, then the selected recognizer is initialized. Audio capture
+starts only after both native stages initialize successfully.
 
-Audio chunks are 100 ms of 16 kHz mono PCM converted to FloatArray. A bounded channel decouples
-capture from ASR decode. The channel is deliberately finite. If decoding falls behind by more than
-the configured queue capacity, the session fails and stops; it never silently discards
-business-critical audio.
+AudioCapture owns exactly one AudioRecord/capture thread. Audio chunks are 100 ms of 16 kHz mono
+PCM and enter a bounded 64-element channel. Saturation is terminal; audio is never silently dropped.
 
-CaptionRecognizer is the narrow runtime substitution seam shared by the two real recognizer
-implementations. It owns only accept, finish, and close lifecycle behavior; backend-specific
-decoding stays inside each implementation.
+CaptionRecognizer remains the narrow ASR substitution seam.
 
 ### Primeline
 
-ParakeetRecognizer is unchanged in behavior. It owns one sherpa-onnx Silero VAD and one offline
-NeMo transducer recognizer. VAD emits completed speech segments; each segment is decoded
-synchronously on the service background dispatcher. Text is emitted only as finalized utterances.
-Close releases both native objects exactly once.
+ParakeetRecognizer remains VAD + offline NeMo-transducer ASR. Each finalized German utterance is
+committed to CaptionSessionStore and submitted to the shared translation pipeline. Primeline has no
+ASR partials, so its English text follows each finalized German utterance.
 
 ### Nemotron 3.5
 
-NemotronRecognizer owns one sherpa-onnx OnlineRecognizer and one persistent OnlineStream for the
-session. It configures the 560-ms INT8 transducer package and pins the stream language option to
-German (de).
+NemotronRecognizer retains one OnlineRecognizer/OnlineStream, forces language=de, and publishes
+replaceable German partials plus endpoint finals. Every new partial clears the English partial
+projection and submits the newest German hypothesis to the shared translation stage.
 
-Each 100-ms audio chunk is accepted into the persistent stream. The recognizer decodes while the
-stream reports readiness, publishes the current hypothesis into CaptionSessionStore as replaceable
-partial text, and finalizes that text when sherpa-onnx reports an endpoint. The stream is then reset
-for the next utterance without reconstructing the recognizer.
+### Shared translation stage
 
-On an explicit user stop, accepted queued audio drains first. Nemotron then marks input finished,
-decodes remaining ready frames, and commits the trailing result once. Primeline keeps its existing
-VAD flush behavior. Failure stops cancel rather than spending more time decoding stale queued
-audio.
+CaptionTranslationPipeline owns serialization of one non-thread-safe BergamotTranslator. The
+pipeline has a bounded command channel for finalized work and at most one pending live partial.
+Multiple partial submissions before translation catches up collapse to the newest source text.
+
+After any partial translation returns, CaptionSessionStore accepts it only if that German source is
+still the current partial. This source match is the stale-completion guard.
+
+Final German lines receive stable line IDs before translation. Final translations are submitted in
+order and update only that matching line ID, so later transcript changes cannot attach English to
+the wrong German line.
+
+On explicit user Stop, the audio queue drains, ASR flushes, any trailing final enters translation,
+then the translation pipeline drains before the session becomes idle. On failure, translation work
+is cancelled and a cancellation check prevents a result from being committed after cancellation.
+The pipeline closes Bergamot native resources in finally. CaptionService performs the final translation/recognizer teardown inside a NonCancellable cleanup section so a terminal failure cannot interrupt native-resource release or the final stopped-state handoff.
 
 ## State and durability
 
-CaptionSessionStore is an application-scoped in-memory state holder. It has one mutable StateFlow;
-external consumers receive read-only StateFlow. It retains at most 200 finalized lines and at most
-one current partial hypothesis.
+CaptionSessionStore is an application-scoped in-memory StateFlow. Each finalized CaptionLine owns
+German source text plus nullable English text while translation is pending. State also contains at
+most one current German partial and its nullable English translation.
 
-A partial hypothesis is a projection of the current Nemotron stream, never a finalized line.
-Updating it replaces the prior partial. appendFinal clears the partial before adding the finalized
-line, preventing duplicate transcript history.
+German remains source truth. English is never independently appended and is updated only through a
+source-match (partial) or line-ID match (final). History remains bounded to the latest 200 finalized
+lines. Clearing transcript removes final pairs; an in-flight translation for a removed line becomes
+a no-op.
 
-The transcript, partial hypothesis, and picker selection are intentionally not process-durable.
-Configuration changes reconnect to application/ViewModel state. Process death clears transcript and
-selection and stops microphone work because the service uses START_NOT_STICKY. Downloaded model
-files are the only durable data.
+Transcript, partials, and backend selection are not process-durable. Downloaded ASR and translation
+models are the only durable feature data.
 
 ## Error and logging boundary
 
-User state exposes stable failure categories: model unavailable, audio unavailable, ASR
-initialization, queue overload, or unexpected local failure. Raw paths, URLs, audio, transcripts,
-partial hypotheses, and recognized text are never logged. Diagnostics log only lifecycle/failure
-categories, backend names, and model asset file names.
+Stable user failures distinguish missing ASR model, missing translation model, audio failure, ASR
+initialization, translation initialization/runtime failure, audio backpressure, and unexpected
+local failure. Raw paths, URLs, audio, German captions, English translations, and partial text are
+never logged. Diagnostics log only failure/lifecycle categories and backend/model metadata.
+
+A bilingual session does not silently continue as German-only after a translation runtime failure.
 
 ## Persistence impact
 
-There is no database schema, DataStore, serialized user data, or migration contract. This change
-adds a second app-private model directory and revision marker. Existing Primeline files and marker
-remain valid and untouched. App backup remains disabled. Removing app data removes both models;
-reinstalling therefore requires new downloads.
+There is no database schema, DataStore, or serialized user-data migration. The change adds one
+app-private Bergamot model directory and its archive-SHA install marker. Existing Primeline and
+Nemotron installs remain valid and untouched. App backup remains disabled. Removing app data
+removes all downloaded models and in-memory caption state.

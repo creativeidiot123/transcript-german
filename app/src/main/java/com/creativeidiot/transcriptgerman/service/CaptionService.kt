@@ -24,6 +24,8 @@ import com.creativeidiot.transcriptgerman.audio.AudioCapture
 import com.creativeidiot.transcriptgerman.model.AsrBackend
 import com.creativeidiot.transcriptgerman.session.CaptionFailure
 import com.creativeidiot.transcriptgerman.session.CaptionSessionStore
+import com.creativeidiot.transcriptgerman.translation.BergamotTranslator
+import com.creativeidiot.transcriptgerman.translation.CaptionTranslationPipeline
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -31,10 +33,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class CaptionService : Service() {
     private enum class StopReason {
@@ -142,6 +146,7 @@ class CaptionService : Service() {
 
         var recognizer: CaptionRecognizer? = null
         var capture: AudioCapture? = null
+        var translationPipeline: CaptionTranslationPipeline? = null
 
         try {
             val modelDirectory = container.modelRepository.installedDirectoryOrNull(backend)
@@ -150,8 +155,67 @@ class CaptionService : Service() {
                 return
             }
 
+            val translationFiles =
+                container.bergamotModelRepository.installedFilesOrNull()
+            if (translationFiles == null) {
+                failSession(CaptionFailure.TRANSLATION_MODEL_NOT_READY)
+                return
+            }
+
+            val translator = try {
+                BergamotTranslator(
+                    context = applicationContext,
+                    files = translationFiles,
+                )
+            } catch (failure: RuntimeException) {
+                Log.e(
+                    TAG,
+                    "Bergamot initialization failed: " +
+                        failure.javaClass.simpleName,
+                )
+                failSession(CaptionFailure.TRANSLATION_INITIALIZATION)
+                return
+            } catch (failure: LinkageError) {
+                Log.e(
+                    TAG,
+                    "Bergamot runtime linkage failed: " +
+                        failure.javaClass.simpleName,
+                )
+                failSession(CaptionFailure.TRANSLATION_INITIALIZATION)
+                return
+            }
+
+            translationPipeline = CaptionTranslationPipeline(
+                scope = serviceScope,
+                translator = translator,
+                onPartialTranslated = store::updatePartialTranslation,
+                onFinalTranslated = store::updateFinalTranslation,
+                onFailure = {
+                    Log.e(TAG, "Bergamot translation failed")
+                    signalTerminalFailure(CaptionFailure.TRANSLATION)
+                },
+            )
+
             recognizer = try {
-                createRecognizer(backend, modelDirectory)
+                createRecognizer(
+                    backend = backend,
+                    modelDirectory = modelDirectory,
+                    onPartial = { german ->
+                        store.updatePartial(german)
+                        if (translationPipeline?.submitPartial(german) == false) {
+                            signalTerminalFailure(CaptionFailure.TRANSLATION)
+                        }
+                    },
+                    onFinal = { german ->
+                        val lineId = store.appendFinal(german)
+                        if (
+                            lineId != null &&
+                            translationPipeline?.submitFinal(lineId, german) == false
+                        ) {
+                            signalTerminalFailure(CaptionFailure.TRANSLATION)
+                        }
+                    },
+                )
             } catch (failure: RuntimeException) {
                 Log.e(
                     TAG,
@@ -189,7 +253,7 @@ class CaptionService : Service() {
         } catch (failure: RuntimeException) {
             Log.e(
                 TAG,
-                "Caption decode failed for " + backend.name +
+                "Caption processing failed for " + backend.name +
                     ": " + failure.javaClass.simpleName,
             )
             failSession(CaptionFailure.UNEXPECTED)
@@ -197,23 +261,30 @@ class CaptionService : Service() {
             capture?.stop()
             queue.close()
 
-            if (stopReason.get() == StopReason.USER) {
-                runCatching { recognizer?.finish() }
-                    .onFailure { failure ->
-                        Log.e(TAG, "Final ASR flush failed: " + failure.javaClass.simpleName)
-                    }
-            }
+            withContext(NonCancellable) {
+                if (stopReason.get() == StopReason.USER) {
+                    runCatching { recognizer?.finish() }
+                        .onFailure { failure ->
+                            Log.e(TAG, "Final ASR flush failed: " + failure.javaClass.simpleName)
+                        }
+                    translationPipeline?.finishAndDrain()
+                } else {
+                    translationPipeline?.cancel()
+                }
 
-            runCatching { recognizer?.close() }
-            audioCapture = null
-            audioQueue = null
-            completeSession(generation)
+                runCatching { recognizer?.close() }
+                audioCapture = null
+                audioQueue = null
+                completeSession(generation)
+            }
         }
     }
 
     private fun createRecognizer(
         backend: AsrBackend,
         modelDirectory: File,
+        onPartial: (String) -> Unit,
+        onFinal: (String) -> Unit,
     ): CaptionRecognizer =
         when (backend) {
             AsrBackend.PRIMELINE -> {
@@ -221,7 +292,7 @@ class CaptionService : Service() {
                     modelDirectory = modelDirectory,
                     onSpeechDetected = store::markSpeechDetected,
                     onTranscribing = store::markTranscribing,
-                    onFinal = store::appendFinal,
+                    onFinal = onFinal,
                 )
             }
 
@@ -229,8 +300,8 @@ class CaptionService : Service() {
                 NemotronRecognizer(
                     modelDirectory = modelDirectory,
                     onTranscribing = store::markTranscribing,
-                    onPartial = store::updatePartial,
-                    onFinal = store::appendFinal,
+                    onPartial = onPartial,
+                    onFinal = onFinal,
                 )
             }
         }
