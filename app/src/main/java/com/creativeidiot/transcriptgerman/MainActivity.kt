@@ -40,6 +40,7 @@ class MainActivity : ComponentActivity() {
                     state = state,
                     onBackendSelected = viewModel::selectBackend,
                     onDownloadModel = viewModel::downloadModel,
+                    onDownloadTranslationModel = viewModel::downloadTranslationModel,
                     onStartListening = ::requestStartListening,
                     onStopListening = ::stopCaptionService,
                     onClearTranscript = viewModel::clearTranscript,
