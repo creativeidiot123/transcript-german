@@ -29,6 +29,7 @@
     <string name="caption_german">Deutsch: %1$s</string>
     <string name="caption_english">English: %1$s</string>
     <string name="translation_pending">Translating…</string>
+    <string name="translation_unavailable">Translation unavailable</string>
     <string name="latency_note_primeline">Primeline finalizes German after a short speech pause; Bergamot then adds the English translation.</string>
     <string name="latency_note_nemotron">Nemotron 3.5 updates German while you speak; Bergamot follows with the latest English partial and final translation.</string>
     <string name="permission_denied">Microphone permission is required to create live captions.</string>
