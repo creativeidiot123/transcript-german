@@ -14,6 +14,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -40,55 +41,81 @@ class ModelRepository(
     private val filesDir: File,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
-    private val bundle = PrimelineModelSpec.bundle
+    private val bundles = AsrBackend.values().associateWith(ModelCatalog::bundleFor)
     private val downloadMutex = Mutex()
 
-    private val _state = MutableStateFlow<ModelInstallState>(
-        if (ModelInstallVerifier.isInstalled(filesDir, bundle)) {
-            ModelInstallState.Ready
-        } else {
-            ModelInstallState.Missing
+    private val _states = MutableStateFlow(
+        bundles.mapValues { (_, bundle) ->
+            if (ModelInstallVerifier.isInstalled(filesDir, bundle)) {
+                ModelInstallState.Ready
+            } else {
+                ModelInstallState.Missing
+            }
         },
     )
 
-    val state: StateFlow<ModelInstallState> = _state.asStateFlow()
+    val states: StateFlow<Map<AsrBackend, ModelInstallState>> = _states.asStateFlow()
 
-    fun installedDirectoryOrNull(): File? =
-        bundle.directory(filesDir).takeIf {
+    fun stateFor(backend: AsrBackend): ModelInstallState =
+        states.value.getValue(backend)
+
+    fun installedDirectoryOrNull(backend: AsrBackend): File? {
+        val bundle = bundles.getValue(backend)
+        return bundle.directory(filesDir).takeIf {
             ModelInstallVerifier.isInstalled(filesDir, bundle)
         }
+    }
 
-    suspend fun download() {
+    suspend fun download(backend: AsrBackend) {
         downloadMutex.withLock {
+            val bundle = bundles.getValue(backend)
             if (ModelInstallVerifier.isInstalled(filesDir, bundle)) {
-                _state.value = ModelInstallState.Ready
+                setState(backend, ModelInstallState.Ready)
                 return@withLock
             }
 
             try {
                 withContext(ioDispatcher) {
-                    installBundle()
+                    installBundle(backend, bundle)
                 }
-                _state.value = ModelInstallState.Ready
+                setState(backend, ModelInstallState.Ready)
             } catch (cancelled: CancellationException) {
-                _state.value = ModelInstallState.Missing
+                setState(backend, ModelInstallState.Missing)
                 throw cancelled
             } catch (_: IntegrityException) {
-                Log.e(TAG, "Model integrity verification failed")
-                _state.value = ModelInstallState.Failed(ModelInstallFailure.INTEGRITY)
+                Log.e(TAG, "Model integrity verification failed for " + backend.name)
+                setState(
+                    backend,
+                    ModelInstallState.Failed(ModelInstallFailure.INTEGRITY),
+                )
             } catch (failure: IOException) {
-                Log.e(TAG, "Model download/storage failure: " + failure.javaClass.simpleName)
-                _state.value =
-                    ModelInstallState.Failed(ModelInstallFailure.DOWNLOAD_OR_STORAGE)
+                Log.e(
+                    TAG,
+                    "Model download/storage failure for " + backend.name +
+                        ": " + failure.javaClass.simpleName,
+                )
+                setState(
+                    backend,
+                    ModelInstallState.Failed(ModelInstallFailure.DOWNLOAD_OR_STORAGE),
+                )
             } catch (failure: RuntimeException) {
-                Log.e(TAG, "Model install runtime failure: " + failure.javaClass.simpleName)
-                _state.value =
-                    ModelInstallState.Failed(ModelInstallFailure.DOWNLOAD_OR_STORAGE)
+                Log.e(
+                    TAG,
+                    "Model install runtime failure for " + backend.name +
+                        ": " + failure.javaClass.simpleName,
+                )
+                setState(
+                    backend,
+                    ModelInstallState.Failed(ModelInstallFailure.DOWNLOAD_OR_STORAGE),
+                )
             }
         }
     }
 
-    private suspend fun installBundle() {
+    private suspend fun installBundle(
+        backend: AsrBackend,
+        bundle: ModelBundleSpec,
+    ) {
         val directory = bundle.directory(filesDir)
         if (!directory.exists() && !directory.mkdirs()) {
             throw IOException("Could not create model directory")
@@ -106,6 +133,7 @@ class ModelRepository(
             }
 
             downloadAndVerify(
+                backend = backend,
                 directory = directory,
                 spec = spec,
                 fileIndex = index + 1,
@@ -137,6 +165,7 @@ class ModelRepository(
     }
 
     private suspend fun downloadAndVerify(
+        backend: AsrBackend,
         directory: File,
         spec: ModelFileSpec,
         fileIndex: Int,
@@ -146,10 +175,13 @@ class ModelRepository(
         val partial = File(directory, spec.name + ".part")
         partial.delete()
 
-        _state.value = ModelInstallState.Downloading(
-            fileIndex = fileIndex,
-            totalFiles = totalFiles,
-            fileProgress = null,
+        setState(
+            backend,
+            ModelInstallState.Downloading(
+                fileIndex = fileIndex,
+                totalFiles = totalFiles,
+                fileProgress = null,
+            ),
         )
         Log.i(TAG, "Downloading model asset " + spec.name)
 
@@ -190,10 +222,13 @@ class ModelRepository(
                                     .coerceIn(0.0, 1.0)
                                     .toFloat()
                             }
-                            _state.value = ModelInstallState.Downloading(
-                                fileIndex = fileIndex,
-                                totalFiles = totalFiles,
-                                fileProgress = progress,
+                            setState(
+                                backend,
+                                ModelInstallState.Downloading(
+                                    fileIndex = fileIndex,
+                                    totalFiles = totalFiles,
+                                    fileProgress = progress,
+                                ),
                             )
                             nextProgressAt = written + PROGRESS_STEP_BYTES
                         }
@@ -244,6 +279,15 @@ class ModelRepository(
             }
         }
         return digest.digest().toHex()
+    }
+
+    private fun setState(
+        backend: AsrBackend,
+        state: ModelInstallState,
+    ) {
+        _states.update { current ->
+            current + (backend to state)
+        }
     }
 
     private fun ByteArray.toHex(): String =
