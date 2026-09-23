@@ -1,5 +1,6 @@
 package com.creativeidiot.transcriptgerman.session
 
+import com.creativeidiot.transcriptgerman.model.AsrBackend
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,7 +31,9 @@ enum class CaptionFailure {
 
 data class CaptionSessionState(
     val status: CaptionSessionStatus = CaptionSessionStatus.IDLE,
+    val activeBackend: AsrBackend? = null,
     val lines: List<CaptionLine> = emptyList(),
+    val partialText: String = "",
     val failure: CaptionFailure? = null,
 )
 
@@ -40,8 +43,15 @@ class CaptionSessionStore {
 
     val state: StateFlow<CaptionSessionState> = _state.asStateFlow()
 
-    fun markStarting() {
-        _state.update { it.copy(status = CaptionSessionStatus.STARTING, failure = null) }
+    fun markStarting(backend: AsrBackend) {
+        _state.update {
+            it.copy(
+                status = CaptionSessionStatus.STARTING,
+                activeBackend = backend,
+                partialText = "",
+                failure = null,
+            )
+        }
     }
 
     fun markListening() {
@@ -90,6 +100,17 @@ class CaptionSessionStore {
         }
     }
 
+    fun updatePartial(text: String) {
+        val trimmed = text.trim()
+        _state.update { current ->
+            if (current.partialText == trimmed) {
+                current
+            } else {
+                current.copy(partialText = trimmed)
+            }
+        }
+    }
+
     fun appendFinal(text: String) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
@@ -103,6 +124,7 @@ class CaptionSessionStore {
                     CaptionSessionStatus.LISTENING
                 },
                 lines = (current.lines + line).takeLast(MAX_LINES),
+                partialText = "",
             )
         }
     }
@@ -111,6 +133,7 @@ class CaptionSessionStore {
         _state.update {
             it.copy(
                 status = CaptionSessionStatus.STOPPING,
+                partialText = "",
                 failure = failure,
             )
         }
@@ -120,13 +143,20 @@ class CaptionSessionStore {
         _state.update {
             it.copy(
                 status = CaptionSessionStatus.IDLE,
+                activeBackend = null,
+                partialText = "",
                 failure = if (clearFailure) null else it.failure,
             )
         }
     }
 
     fun clearTranscript() {
-        _state.update { it.copy(lines = emptyList()) }
+        _state.update {
+            it.copy(
+                lines = emptyList(),
+                partialText = "",
+            )
+        }
     }
 
     private companion object {
