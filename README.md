@@ -110,8 +110,9 @@ CI also assembles the release variant and publishes the debug APK as an artifact
 
 A manual `Signed AAB` GitHub Actions workflow builds and verifies a signed release bundle without
 committing signing material. The job is bound to a protected GitHub Actions environment named
-`release` and only runs from `main`. Configure that environment to allow deployments from
-`main` only and store these environment secrets there:
+`release` and only runs from `main`. Before adding any signing secrets, create/configure that
+environment with a required reviewer and a deployment-branch rule that allows `main` only. Store
+these environment secrets there:
 
 - `ANDROID_KEYSTORE_BASE64`: base64-encoded upload keystore.
 - `ANDROID_SIGNING_STORE_PASSWORD`: keystore password.
