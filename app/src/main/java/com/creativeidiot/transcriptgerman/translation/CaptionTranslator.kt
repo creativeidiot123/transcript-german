@@ -26,7 +26,7 @@ internal class BergamotTranslator(
                 sourceLang = "de",
                 targetLang = "en",
                 modelPath = files.model.absolutePath,
-                vocabPaths = listOf(files.vocab.absolutePath),
+                vocabPaths = files.vocabs.map { it.absolutePath },
                 shortlistPath = files.shortlist.absolutePath,
                 configYaml = files.config.absolutePath,
                 numWorkers = 1,
