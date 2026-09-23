@@ -4,7 +4,7 @@ import java.io.File
 
 internal data class BergamotModelFiles(
     val model: File,
-    val vocab: File,
+    val vocabs: List<File>,
     val shortlist: File,
     val config: File,
 )
@@ -17,10 +17,6 @@ internal object BergamotModelSpec {
         "https://data.statmt.org/bergamot/models/deen/" +
             "deen.student.base.v2.caa7c0ce3c8eaf05.tar.gz"
     const val DIRECTORY_NAME = "bergamot-de-en-base-v2"
-
-    const val MODEL_FILE = "model.intgemm.alphas.bin"
-    const val VOCAB_FILE = "vocab.deen.spm"
-    const val SHORTLIST_FILE = "lex.s2t.bin"
     const val CONFIG_FILE = "config.intgemm8bitalpha.yml"
 
     fun directory(filesDir: File): File =
@@ -45,22 +41,31 @@ internal object BergamotModelInstallVerifier {
         }
 
         val allFiles = directory.walkTopDown()
-            .filter(File::isFile)
+            .filter { it.isFile && it.length() > 0L }
             .toList()
 
-        fun required(name: String): File? =
-            allFiles.singleOrNull { file ->
-                file.name == name && file.length() > 0L
-            }
+        val model = allFiles.singleOrNull { file ->
+            file.name.startsWith("model") &&
+                file.name.endsWith(".bin") &&
+                !file.name.startsWith("lex")
+        } ?: return null
 
-        val model = required(BergamotModelSpec.MODEL_FILE) ?: return null
-        val vocab = required(BergamotModelSpec.VOCAB_FILE) ?: return null
-        val shortlist = required(BergamotModelSpec.SHORTLIST_FILE) ?: return null
-        val config = required(BergamotModelSpec.CONFIG_FILE) ?: return null
+        val vocabs = allFiles
+            .filter { it.name.endsWith(".spm") }
+            .sortedBy { it.name }
+        if (vocabs.size !in 1..2) return null
+
+        val shortlist = allFiles.singleOrNull { file ->
+            file.name.startsWith("lex") && file.name.endsWith(".bin")
+        } ?: return null
+
+        val config = allFiles.singleOrNull {
+            it.name == BergamotModelSpec.CONFIG_FILE
+        } ?: return null
 
         return BergamotModelFiles(
             model = model,
-            vocab = vocab,
+            vocabs = vocabs,
             shortlist = shortlist,
             config = config,
         )
