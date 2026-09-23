@@ -40,9 +40,9 @@ enum class ModelInstallFailure {
 class ModelRepository(
     private val filesDir: File,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val downloadMutex: Mutex = Mutex(),
 ) {
     private val bundles = AsrBackend.values().associateWith(ModelCatalog::bundleFor)
-    private val downloadMutex = Mutex()
 
     private val _states = MutableStateFlow(
         bundles.mapValues { (_, bundle) ->
