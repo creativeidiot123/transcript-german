@@ -112,8 +112,7 @@ Primeline retains its existing CC BY 4.0 model/export terms. Nemotron model weig
 OpenMDW-1.1.
 
 translate-kit is Apache-2.0 and statically links the Bergamot translation layer (MPL-2.0) plus the
-third-party components documented by that upstream project. The Bergamot model bundle is downloaded
-at runtime rather than embedded in the APK. Exact runtime/model provenance is pinned above so a
+third-party components documented by that upstream project. The Bergamot German-English base model is CC-BY-SA-4.0 and is downloaded at runtime rather than embedded in the APK. Exact runtime/model provenance is pinned above so a
 shipped binary can be traced to its source/runtime inputs.
 
 ## Architecture
