@@ -128,7 +128,7 @@ translation remain on-device.
 - Nemotron sherpa-onnx 560-ms INT8 export revision:
   ab43d895f5985b1bbab8b6eac8607fcdc05343f3.
 - Nemotron recognizer: sherpa-onnx OnlineRecognizer, greedy_search, per-stream language=de.
-- Bergamot catalog model: de-en-base version 2, API 1.
+- Bergamot catalog model: de-en-base version 2, API 1, CC-BY-SA-4.0.
 - Bergamot archive SHA-256:
   caa7c0ce3c8eaf05d333dc9458683f4b0375e5eeb604f6fb2c8585f7b70d398b.
 - Bergamot Android JNI wrapper: translate-kit 0.1.0, built from pinned upstream commit
