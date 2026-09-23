@@ -173,6 +173,14 @@ class CaptionService : Service() {
                 )
                 failSession(CaptionFailure.TRANSLATION_INITIALIZATION)
                 return
+            } catch (failure: LinkageError) {
+                Log.e(
+                    TAG,
+                    "Bergamot runtime linkage failed: " +
+                        failure.javaClass.simpleName,
+                )
+                failSession(CaptionFailure.TRANSLATION_INITIALIZATION)
+                return
             }
 
             translationPipeline = CaptionTranslationPipeline(
