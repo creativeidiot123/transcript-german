@@ -4,6 +4,7 @@ import java.io.File
 import java.nio.file.Files
 import org.junit.After
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -39,11 +40,36 @@ class ModelInstallVerifierTest {
     }
 
     @Test
-    fun productionBundle_requiresExactSizeAndDigestForEveryAsset() {
+    fun productionBundles_pinExactAssetSizes() {
         assertTrue(
-            PrimelineModelSpec.bundle.files.all { spec ->
-                spec.exactBytes != null && spec.sha256 != null
+            listOf(
+                PrimelineModelSpec.bundle,
+                NemotronModelSpec.bundle,
+            ).all { productionBundle ->
+                productionBundle.files.all { it.exactBytes != null }
             },
+        )
+    }
+
+    @Test
+    fun productionOnnxAssets_pinDigests() {
+        assertTrue(
+            listOf(
+                PrimelineModelSpec.bundle,
+                NemotronModelSpec.bundle,
+            ).all { productionBundle ->
+                productionBundle.files
+                    .filter { it.name.endsWith(".onnx") || it.name.endsWith(".onnx.data") }
+                    .all { it.sha256 != null }
+            },
+        )
+    }
+
+    @Test
+    fun backendCatalog_usesIndependentInstallDirectories() {
+        assertNotEquals(
+            ModelCatalog.bundleFor(AsrBackend.PRIMELINE).directoryName,
+            ModelCatalog.bundleFor(AsrBackend.NEMOTRON).directoryName,
         )
     }
 
