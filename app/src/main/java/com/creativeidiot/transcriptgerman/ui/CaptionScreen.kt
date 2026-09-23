@@ -149,7 +149,12 @@ fun CaptionScreen(
                             items = lines,
                             key = { it.id },
                         ) { line ->
-                            CaptionPair(line)
+                            CaptionPair(
+                                line = line,
+                                translationPending =
+                                    state.session.status != CaptionSessionStatus.IDLE &&
+                                        state.session.failure == null,
+                            )
                         }
 
                         if (partialText.isNotBlank()) {
@@ -176,11 +181,14 @@ fun CaptionScreen(
 }
 
 @Composable
-private fun CaptionPair(line: CaptionLine) {
+private fun CaptionPair(
+    line: CaptionLine,
+    translationPending: Boolean,
+) {
     CaptionPair(
         german = line.text,
         english = line.englishText,
-        pending = line.englishText == null,
+        pending = line.englishText == null && translationPending,
     )
 }
 
@@ -204,7 +212,7 @@ private fun CaptionPair(
                 english ?: if (pending) {
                     stringResource(R.string.translation_pending)
                 } else {
-                    ""
+                    stringResource(R.string.translation_unavailable)
                 },
             ),
             style = MaterialTheme.typography.bodyMedium,
