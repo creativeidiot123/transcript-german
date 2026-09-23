@@ -33,10 +33,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class CaptionService : Service() {
     private enum class StopReason {
@@ -259,20 +261,22 @@ class CaptionService : Service() {
             capture?.stop()
             queue.close()
 
-            if (stopReason.get() == StopReason.USER) {
-                runCatching { recognizer?.finish() }
-                    .onFailure { failure ->
-                        Log.e(TAG, "Final ASR flush failed: " + failure.javaClass.simpleName)
-                    }
-                translationPipeline?.finishAndDrain()
-            } else {
-                translationPipeline?.cancel()
-            }
+            withContext(NonCancellable) {
+                if (stopReason.get() == StopReason.USER) {
+                    runCatching { recognizer?.finish() }
+                        .onFailure { failure ->
+                            Log.e(TAG, "Final ASR flush failed: " + failure.javaClass.simpleName)
+                        }
+                    translationPipeline?.finishAndDrain()
+                } else {
+                    translationPipeline?.cancel()
+                }
 
-            runCatching { recognizer?.close() }
-            audioCapture = null
-            audioQueue = null
-            completeSession(generation)
+                runCatching { recognizer?.close() }
+                audioCapture = null
+                audioQueue = null
+                completeSession(generation)
+            }
         }
     }
 
