@@ -60,7 +60,9 @@ android {
 
 dependencies {
     implementation(files("libs/sherpa-onnx-1.13.8.aar"))
+    implementation(files("libs/translate-kit-android-0.1.0.aar"))
 
+    implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.activity:activity-compose:1.9.3")
@@ -76,6 +78,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
@@ -99,6 +102,12 @@ val sherpaAarUrl =
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar"
 val sherpaAarSha256 =
     "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96"
+
+val translateKitAarUrl =
+    "https://github.com/creativeidiot123/transcript-german/releases/download/" +
+        "deps-translate-kit-0.1.0/translate-kit-android-0.1.0.aar"
+val translateKitAarSha256 =
+    "e0da38118cd27504a1b6a0037818e7e490f3a4eff1930205e0bb5b774163d60e"
 
 val downloadSherpaAar by tasks.registering {
     val output = layout.projectDirectory.file("libs/sherpa-onnx-1.13.8.aar").asFile
@@ -133,6 +142,39 @@ val downloadSherpaAar by tasks.registering {
     }
 }
 
+val downloadTranslateKitAar by tasks.registering {
+    val output = layout.projectDirectory.file("libs/translate-kit-android-0.1.0.aar").asFile
+    outputs.file(output)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        if (output.isFile && sha256(output) == translateKitAarSha256) {
+            logger.lifecycle("Verified translate-kit 0.1.0 AAR")
+            return@doLast
+        }
+
+        output.delete()
+        output.parentFile.mkdirs()
+        val partial = File(output.parentFile, output.name + ".part")
+        partial.delete()
+
+        logger.lifecycle("Downloading translate-kit 0.1.0 AAR")
+        try {
+            URI(translateKitAarUrl).toURL().openStream().buffered().use { input ->
+                partial.outputStream().buffered().use { out -> input.copyTo(out) }
+            }
+            check(sha256(partial) == translateKitAarSha256) {
+                "translate-kit AAR checksum mismatch"
+            }
+            check(partial.renameTo(output)) {
+                "Could not finalize translate-kit AAR"
+            }
+        } finally {
+            partial.delete()
+        }
+    }
+}
+
 tasks.named("preBuild") {
-    dependsOn(downloadSherpaAar)
+    dependsOn(downloadSherpaAar, downloadTranslateKitAar)
 }
