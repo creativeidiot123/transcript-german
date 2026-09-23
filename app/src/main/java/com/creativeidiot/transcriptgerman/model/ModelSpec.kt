@@ -18,6 +18,12 @@ internal data class ModelBundleSpec(
     fun directory(filesDir: File): File = File(File(filesDir, "models"), directoryName)
 }
 
+internal fun modelBundleFor(backend: AsrBackend): ModelBundleSpec =
+    when (backend) {
+        AsrBackend.PRIMELINE -> PrimelineModelSpec.bundle
+        AsrBackend.NEMOTRON -> NemotronModelSpec.bundle
+    }
+
 internal object PrimelineModelSpec {
     const val REVISION = "d548e25b9bfe559aa274f361892dc4ed5d64743a"
 
@@ -66,6 +72,45 @@ internal object PrimelineModelSpec {
                 url = SHERPA_MODELS + "silero_vad.onnx",
                 exactBytes = 643_854,
                 sha256 = "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
+            ),
+        ),
+    )
+}
+
+internal object NemotronModelSpec {
+    const val REVISION = "ab43d895f5985b1bbab8b6eac8607fcdc05343f3"
+
+    private const val MODEL_BASE =
+        "https://huggingface.co/csukuangfj2/" +
+            "sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11/resolve/" +
+            REVISION + "/"
+
+    val bundle = ModelBundleSpec(
+        revision = REVISION,
+        directoryName = "nemotron-3.5-streaming-560ms-" + REVISION,
+        files = listOf(
+            ModelFileSpec(
+                name = "encoder.int8.onnx",
+                url = MODEL_BASE + "encoder.int8.onnx?download=true",
+                exactBytes = 657_601_403,
+                sha256 = "874275f509c86e331eb1c1f1e2f7fa48c39144de94f98ccbe6ae3fcdc18df38a",
+            ),
+            ModelFileSpec(
+                name = "decoder.int8.onnx",
+                url = MODEL_BASE + "decoder.int8.onnx?download=true",
+                exactBytes = 14_978_075,
+                sha256 = "19f9c98fc6d0a2c33a65a43b36fdb2e914c26c0aa9764be3aebc502a1e982fb0",
+            ),
+            ModelFileSpec(
+                name = "joiner.int8.onnx",
+                url = MODEL_BASE + "joiner.int8.onnx?download=true",
+                exactBytes = 9_504_438,
+                sha256 = "4101c7c679a0bc30483794b27a059e34e79232aa2068d78d51231a22c8b0d7ce",
+            ),
+            ModelFileSpec(
+                name = "tokens.txt",
+                url = MODEL_BASE + "tokens.txt?download=true",
+                exactBytes = 131_440,
             ),
         ),
     )
