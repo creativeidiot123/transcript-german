@@ -78,6 +78,10 @@ class CaptionSessionStoreTest {
         assertEquals("Good morning", store.state.value.lines.single().englishText)
         assertEquals("", store.state.value.partialText)
         assertNull(store.state.value.partialEnglishText)
+
+        store.clearTranscript()
+        store.updateFinalTranslation(lineId, "Late translation")
+        assertEquals(emptyList<CaptionLine>(), store.state.value.lines)
     }
 
     @Test
