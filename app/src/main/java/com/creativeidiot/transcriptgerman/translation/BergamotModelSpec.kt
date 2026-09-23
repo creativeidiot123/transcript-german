@@ -27,9 +27,9 @@ internal object BergamotModelInstallVerifier {
     const val INSTALL_MARKER = ".installed-archive-sha256"
 
     fun installedFilesOrNull(filesDir: File): BergamotModelFiles? =
-        installedFilesOrNull(BergamotModelSpec.directory(filesDir))
+        installedFilesInDirectoryOrNull(BergamotModelSpec.directory(filesDir))
 
-    fun installedFilesOrNull(directory: File): BergamotModelFiles? {
+    fun installedFilesInDirectoryOrNull(directory: File): BergamotModelFiles? {
         if (!directory.isDirectory) return null
 
         val marker = File(directory, INSTALL_MARKER)
