@@ -10,7 +10,7 @@ import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
 import java.io.File
 
-class ParakeetRecognizer(
+internal class ParakeetRecognizer(
     modelDirectory: File,
     private val onSpeechDetected: (Boolean) -> Unit,
     private val onTranscribing: (Boolean) -> Unit,
