@@ -39,10 +39,31 @@ class ModelInstallVerifierTest {
     }
 
     @Test
-    fun productionBundle_requiresExactSizeAndDigestForEveryAsset() {
+    fun productionBundles_requireExactSizesForEveryAsset() {
+        val bundles = listOf(
+            PrimelineModelSpec.bundle,
+            NemotronModelSpec.bundle,
+        )
+
         assertTrue(
-            PrimelineModelSpec.bundle.files.all { spec ->
-                spec.exactBytes != null && spec.sha256 != null
+            bundles.all { bundle ->
+                bundle.files.all { spec -> spec.exactBytes != null }
+            },
+        )
+    }
+
+    @Test
+    fun productionOnnxWeights_havePinnedDigests() {
+        val bundles = listOf(
+            PrimelineModelSpec.bundle,
+            NemotronModelSpec.bundle,
+        )
+
+        assertTrue(
+            bundles.all { bundle ->
+                bundle.files
+                    .filter { spec -> spec.name.endsWith(".onnx") }
+                    .all { spec -> spec.sha256 != null }
             },
         )
     }
