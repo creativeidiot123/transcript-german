@@ -74,6 +74,27 @@ class CaptionTranslationPipelineTest {
     }
 
     @Test
+    fun blankTranslationSignalsFailureAndClosesModel() = runTest {
+        val translator = BlankTranslator()
+        var failures = 0
+
+        val pipeline = CaptionTranslationPipeline(
+            scope = this,
+            translator = translator,
+            onPartialTranslated = { _, _ -> error("no partial expected") },
+            onFinalTranslated = { _, _ -> error("no final expected") },
+            onFailure = { failures += 1 },
+        )
+
+        pipeline.submitFinal(1L, "Fehler")
+        advanceUntilIdle()
+        pipeline.finishAndDrain()
+
+        assertEquals(1, failures)
+        assertTrue(translator.closed)
+    }
+
+    @Test
     fun translationFailureSignalsOnceAndClosesModel() = runTest {
         val translator = FailingTranslator()
         var failures = 0
@@ -102,6 +123,16 @@ class CaptionTranslationPipelineTest {
             inputs += text
             return "EN:$text"
         }
+
+        override fun close() {
+            closed = true
+        }
+    }
+
+    private class BlankTranslator : CaptionTranslator {
+        var closed = false
+
+        override fun translateGermanToEnglish(text: String): String = "   "
 
         override fun close() {
             closed = true
