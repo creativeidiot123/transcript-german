@@ -106,6 +106,21 @@ translate-kit 0.1.0 AAR. Apache Commons Compress 1.28.0 is used for Bergamot tar
 
 CI also assembles the release variant and publishes the debug APK as an artifact.
 
+### Signed AAB
+
+A manual `Signed AAB` GitHub Actions workflow builds and verifies a signed release bundle without
+committing signing material. It requires these repository Actions secrets:
+
+- `ANDROID_KEYSTORE_BASE64`: base64-encoded upload keystore.
+- `ANDROID_SIGNING_STORE_PASSWORD`: keystore password.
+- `ANDROID_SIGNING_KEY_ALIAS`: key alias.
+- `ANDROID_SIGNING_KEY_PASSWORD`: key password.
+
+The workflow reconstructs the keystore only in the runner temporary directory, runs
+`gradle :app:bundleRelease`, verifies the bundle signature with `jarsigner`, and uploads the AAB
+as a 14-day workflow artifact. Normal PR/main CI remains unsigned and does not require signing
+secrets.
+
 ## Licensing/provenance
 
 Primeline retains its existing CC BY 4.0 model/export terms. Nemotron model weights use NVIDIA
