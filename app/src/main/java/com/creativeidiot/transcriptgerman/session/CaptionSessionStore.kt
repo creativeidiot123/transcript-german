@@ -31,6 +31,7 @@ enum class CaptionFailure {
 data class CaptionSessionState(
     val status: CaptionSessionStatus = CaptionSessionStatus.IDLE,
     val lines: List<CaptionLine> = emptyList(),
+    val partialText: String = "",
     val failure: CaptionFailure? = null,
 )
 
@@ -41,7 +42,13 @@ class CaptionSessionStore {
     val state: StateFlow<CaptionSessionState> = _state.asStateFlow()
 
     fun markStarting() {
-        _state.update { it.copy(status = CaptionSessionStatus.STARTING, failure = null) }
+        _state.update {
+            it.copy(
+                status = CaptionSessionStatus.STARTING,
+                partialText = "",
+                failure = null,
+            )
+        }
     }
 
     fun markListening() {
@@ -90,6 +97,26 @@ class CaptionSessionStore {
         }
     }
 
+    fun updatePartial(text: String) {
+        val trimmed = text.trim()
+        _state.update { current ->
+            if (current.partialText == trimmed) {
+                current
+            } else {
+                current.copy(
+                    status = if (current.status == CaptionSessionStatus.STOPPING) {
+                        CaptionSessionStatus.STOPPING
+                    } else if (trimmed.isNotEmpty()) {
+                        CaptionSessionStatus.SPEECH_DETECTED
+                    } else {
+                        CaptionSessionStatus.LISTENING
+                    },
+                    partialText = trimmed,
+                )
+            }
+        }
+    }
+
     fun appendFinal(text: String) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
@@ -103,6 +130,7 @@ class CaptionSessionStore {
                     CaptionSessionStatus.LISTENING
                 },
                 lines = (current.lines + line).takeLast(MAX_LINES),
+                partialText = "",
             )
         }
     }
@@ -111,6 +139,7 @@ class CaptionSessionStore {
         _state.update {
             it.copy(
                 status = CaptionSessionStatus.STOPPING,
+                partialText = "",
                 failure = failure,
             )
         }
@@ -120,6 +149,7 @@ class CaptionSessionStore {
         _state.update {
             it.copy(
                 status = CaptionSessionStatus.IDLE,
+                partialText = "",
                 failure = if (clearFailure) null else it.failure,
             )
         }
