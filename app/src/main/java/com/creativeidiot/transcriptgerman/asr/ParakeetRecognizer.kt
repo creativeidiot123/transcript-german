@@ -15,7 +15,7 @@ class ParakeetRecognizer(
     private val onSpeechDetected: (Boolean) -> Unit,
     private val onTranscribing: (Boolean) -> Unit,
     private val onFinal: (String) -> Unit,
-) : AutoCloseable {
+) : CaptionRecognizer {
     private val vad: Vad
     private val recognizer: OfflineRecognizer
 
@@ -70,7 +70,7 @@ class ParakeetRecognizer(
     private var speechDetected = false
     private var closed = false
 
-    fun accept(samples: FloatArray) {
+    override fun accept(samples: FloatArray) {
         check(!closed) { "Recognizer is closed" }
 
         vad.acceptWaveform(samples)
@@ -83,7 +83,7 @@ class ParakeetRecognizer(
         }
     }
 
-    fun finish() {
+    override fun finish() {
         if (closed) return
 
         vad.flush()
