@@ -74,9 +74,9 @@ class CaptionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                val backend = intent.getStringExtra(EXTRA_BACKEND)
-                    ?.let { name -> AsrBackend.values().firstOrNull { it.name == name } }
-                    ?: AsrBackend.PRIMELINE
+                val backend =
+                    AsrBackend.fromWireValue(intent.getStringExtra(EXTRA_BACKEND))
+                        ?: AsrBackend.PRIMELINE
                 startForegroundSession(backend)
             }
 

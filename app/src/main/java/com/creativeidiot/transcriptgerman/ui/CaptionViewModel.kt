@@ -32,6 +32,7 @@ class CaptionViewModel(
 ) : ViewModel() {
     private val selectedBackend = MutableStateFlow(AsrBackend.PRIMELINE)
     private val microphonePermissionDenied = MutableStateFlow(false)
+    private var pendingStartBackend: AsrBackend? = null
     private var downloadJob: Job? = null
 
     val state: StateFlow<CaptionUiState> = combine(
@@ -69,8 +70,6 @@ class CaptionViewModel(
         selectedBackend.value = backend
     }
 
-    fun selectedBackendForStart(): AsrBackend = selectedBackend.value
-
     fun downloadModel() {
         if (downloadJob?.isActive == true) return
 
@@ -84,12 +83,22 @@ class CaptionViewModel(
         sessionStore.clearTranscript()
     }
 
-    fun prepareMicrophoneRequest() {
+    fun prepareMicrophoneRequest(): AsrBackend {
         microphonePermissionDenied.value = false
+        return selectedBackend.value.also { backend ->
+            pendingStartBackend = backend
+        }
     }
 
-    fun onMicrophonePermissionResult(granted: Boolean) {
+    fun consumePreparedStart() {
+        pendingStartBackend = null
+    }
+
+    fun onMicrophonePermissionResult(granted: Boolean): AsrBackend? {
         microphonePermissionDenied.value = !granted
+        val backend = pendingStartBackend
+        pendingStartBackend = null
+        return backend.takeIf { granted }
     }
 
     class Factory(private val container: AppContainer) : ViewModelProvider.Factory {

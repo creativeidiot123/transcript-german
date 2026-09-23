@@ -24,9 +24,8 @@ class MainActivity : ComponentActivity() {
 
     private val microphonePermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            viewModel.onMicrophonePermissionResult(granted)
-            if (granted) {
-                startCaptionService(viewModel.selectedBackendForStart())
+            viewModel.onMicrophonePermissionResult(granted)?.let { backend ->
+                startCaptionService(backend)
             }
         }
 
@@ -50,7 +49,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestStartListening() {
-        viewModel.prepareMicrophoneRequest()
+        val backend = viewModel.prepareMicrophoneRequest()
 
         if (
             ContextCompat.checkSelfPermission(
@@ -58,7 +57,8 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.RECORD_AUDIO,
             ) == PackageManager.PERMISSION_GRANTED
         ) {
-            startCaptionService(viewModel.selectedBackendForStart())
+            viewModel.consumePreparedStart()
+            startCaptionService(backend)
         } else {
             microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
@@ -69,7 +69,7 @@ class MainActivity : ComponentActivity() {
             this,
             Intent(this, CaptionService::class.java)
                 .setAction(CaptionService.ACTION_START)
-                .putExtra(CaptionService.EXTRA_BACKEND, backend.name),
+                .putExtra(CaptionService.EXTRA_BACKEND, backend.wireValue),
         )
     }
 
