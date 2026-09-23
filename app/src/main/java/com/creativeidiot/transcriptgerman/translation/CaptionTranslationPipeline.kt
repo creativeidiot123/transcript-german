@@ -51,6 +51,8 @@ internal class CaptionTranslationPipeline(
             throw cancelled
         } catch (_: RuntimeException) {
             signalFailure()
+        } catch (_: LinkageError) {
+            signalFailure()
         } finally {
             translator.close()
         }
