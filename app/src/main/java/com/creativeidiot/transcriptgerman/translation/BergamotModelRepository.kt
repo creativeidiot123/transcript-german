@@ -37,7 +37,7 @@ class BergamotModelRepository(
 
     val state: StateFlow<ModelInstallState> = _state.asStateFlow()
 
-    fun installedFilesOrNull(): BergamotModelFiles? =
+    internal fun installedFilesOrNull(): BergamotModelFiles? =
         BergamotModelInstallVerifier.installedFilesOrNull(filesDir)
 
     suspend fun download() {
@@ -102,7 +102,7 @@ class BergamotModelRepository(
             verifyArchive(archive)
             extractArchive(archive, staging)
 
-            val files = BergamotModelInstallVerifier.installedFilesOrNull(
+            val files = BergamotModelInstallVerifier.installedFilesInDirectoryOrNull(
                 staging.apply {
                     File(this, BergamotModelInstallVerifier.INSTALL_MARKER)
                         .writeText(BergamotModelSpec.ARCHIVE_SHA256)
