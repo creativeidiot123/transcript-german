@@ -137,7 +137,8 @@ translation remain on-device.
 - Model/runtime downloads use HTTPS and pinned revisions, checksums, or exact asset metadata before
   commit.
 - Release signing is opt-in through the manual `Signed AAB` GitHub Actions workflow. The job is
-  bound to a protected `release` environment, restricted to `main`; signing material is supplied
+  bound to a protected `release` environment with a required reviewer and `main`-only deployment
+  rule; signing material is supplied
   only through environment-scoped Actions secrets and a runner-temporary keystore. Normal PR/main
   verification stays unsigned.
 
