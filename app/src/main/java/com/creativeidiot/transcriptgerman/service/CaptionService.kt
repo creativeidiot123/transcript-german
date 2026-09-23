@@ -231,12 +231,11 @@ class CaptionService : Service() {
     }
 
     private fun completeSession(generation: Long) {
-        val reason = stopReason.get()
-        store.markStopped(clearFailure = reason != StopReason.FAILURE)
-
         mainHandler.post {
             if (generation != sessionGeneration) return@post
 
+            val reason = stopReason.get()
+            store.markStopped(clearFailure = reason != StopReason.FAILURE)
             sessionJob = null
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()
