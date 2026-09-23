@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.update
 data class CaptionLine(
     val id: Long,
     val text: String,
+    val englishText: String? = null,
 )
 
 enum class CaptionSessionStatus {
@@ -23,9 +24,12 @@ enum class CaptionSessionStatus {
 
 enum class CaptionFailure {
     MODEL_NOT_READY,
+    TRANSLATION_MODEL_NOT_READY,
     AUDIO_UNAVAILABLE,
     ASR_INITIALIZATION,
+    TRANSLATION_INITIALIZATION,
     AUDIO_BACKPRESSURE,
+    TRANSLATION,
     UNEXPECTED,
 }
 
@@ -33,6 +37,7 @@ data class CaptionSessionState(
     val status: CaptionSessionStatus = CaptionSessionStatus.IDLE,
     val lines: List<CaptionLine> = emptyList(),
     val partialText: String = "",
+    val partialEnglishText: String? = null,
     val activeBackend: AsrBackend? = null,
     val failure: CaptionFailure? = null,
 )
@@ -48,6 +53,7 @@ class CaptionSessionStore {
             it.copy(
                 status = CaptionSessionStatus.STARTING,
                 partialText = "",
+                partialEnglishText = null,
                 activeBackend = backend,
                 failure = null,
             )
@@ -115,16 +121,37 @@ class CaptionSessionStore {
                         CaptionSessionStatus.LISTENING
                     },
                     partialText = trimmed,
+                    partialEnglishText = null,
                 )
             }
         }
     }
 
-    fun appendFinal(text: String) {
-        val trimmed = text.trim()
-        if (trimmed.isEmpty()) return
+    fun updatePartialTranslation(
+        sourceGerman: String,
+        english: String,
+    ) {
+        val source = sourceGerman.trim()
+        val translated = english.trim()
+        if (source.isEmpty() || translated.isEmpty()) return
 
-        val line = CaptionLine(nextId.getAndIncrement(), trimmed)
+        _state.update { current ->
+            if (current.partialText != source) {
+                current
+            } else {
+                current.copy(partialEnglishText = translated)
+            }
+        }
+    }
+
+    fun appendFinal(text: String): Long? {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return null
+
+        val line = CaptionLine(
+            id = nextId.getAndIncrement(),
+            text = trimmed,
+        )
         _state.update { current ->
             current.copy(
                 status = if (current.status == CaptionSessionStatus.STOPPING) {
@@ -134,7 +161,28 @@ class CaptionSessionStore {
                 },
                 lines = (current.lines + line).takeLast(MAX_LINES),
                 partialText = "",
+                partialEnglishText = null,
             )
+        }
+        return line.id
+    }
+
+    fun updateFinalTranslation(
+        lineId: Long,
+        english: String,
+    ) {
+        val translated = english.trim()
+        if (translated.isEmpty()) return
+
+        _state.update { current ->
+            val index = current.lines.indexOfFirst { it.id == lineId }
+            if (index < 0) {
+                current
+            } else {
+                val updated = current.lines.toMutableList()
+                updated[index] = updated[index].copy(englishText = translated)
+                current.copy(lines = updated)
+            }
         }
     }
 
@@ -143,6 +191,7 @@ class CaptionSessionStore {
             it.copy(
                 status = CaptionSessionStatus.STOPPING,
                 partialText = "",
+                partialEnglishText = null,
                 failure = failure,
             )
         }
@@ -153,6 +202,7 @@ class CaptionSessionStore {
             it.copy(
                 status = CaptionSessionStatus.IDLE,
                 partialText = "",
+                partialEnglishText = null,
                 activeBackend = null,
                 failure = if (clearFailure) null else it.failure,
             )
