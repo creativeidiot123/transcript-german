@@ -22,6 +22,25 @@ class CaptionSessionStoreTest {
     }
 
     @Test
+    fun streamingPartial_replacesUntilFinalized() {
+        val store = CaptionSessionStore()
+        store.markStarting()
+        store.markListening()
+
+        store.updatePartial("Guten")
+        store.updatePartial("Guten Morgen")
+
+        assertEquals(CaptionSessionStatus.SPEECH_DETECTED, store.state.value.status)
+        assertEquals("Guten Morgen", store.state.value.partialText)
+        assertEquals(emptyList<CaptionLine>(), store.state.value.lines)
+
+        store.appendFinal("Guten Morgen.")
+
+        assertEquals("", store.state.value.partialText)
+        assertEquals(listOf("Guten Morgen."), store.state.value.lines.map { it.text })
+    }
+
+    @Test
     fun markStopping_preservesTranscriptAndMovesToStopping() {
         val store = CaptionSessionStore()
         store.markStarting()
@@ -29,8 +48,10 @@ class CaptionSessionStoreTest {
         store.appendFinal("Hallo Welt")
 
         store.markStopping()
+        store.updatePartial("späte Hypothese")
 
         assertEquals(CaptionSessionStatus.STOPPING, store.state.value.status)
+        assertEquals("späte Hypothese", store.state.value.partialText)
         assertEquals(listOf("Hallo Welt"), store.state.value.lines.map { it.text })
     }
 
@@ -74,10 +95,12 @@ class CaptionSessionStoreTest {
         val store = CaptionSessionStore()
 
         store.markStarting()
+        store.updatePartial("discard me")
         store.markFailure(CaptionFailure.AUDIO_BACKPRESSURE)
         store.markStopped(clearFailure = false)
 
         assertEquals(CaptionSessionStatus.IDLE, store.state.value.status)
+        assertEquals("", store.state.value.partialText)
         assertEquals(CaptionFailure.AUDIO_BACKPRESSURE, store.state.value.failure)
 
         store.markStarting()
