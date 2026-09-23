@@ -8,6 +8,8 @@ permissions:
 
 jobs:
   bundle:
+    if: github.ref == 'refs/heads/main'
+    environment: release
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -55,7 +57,28 @@ jobs:
         run: gradle :app:bundleRelease --stacktrace
 
       - name: Verify AAB signature
-        run: jarsigner -verify -strict app/build/outputs/bundle/release/app-release.aab
+        env:
+          ANDROID_SIGNING_STORE_FILE: ${{ runner.temp }}/release.keystore
+          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+        run: |
+          keytool -exportcert -rfc \
+            -keystore "$ANDROID_SIGNING_STORE_FILE" \
+            -alias "$ANDROID_SIGNING_KEY_ALIAS" \
+            -storepass:env ANDROID_SIGNING_STORE_PASSWORD \
+            -file "$RUNNER_TEMP/upload-cert.pem"
+
+          keytool -importcert -noprompt \
+            -alias expected-upload-key \
+            -file "$RUNNER_TEMP/upload-cert.pem" \
+            -keystore "$RUNNER_TEMP/aab-verification-truststore.jks" \
+            -storetype JKS \
+            -storepass verification-only
+
+          jarsigner -verify -strict \
+            -keystore "$RUNNER_TEMP/aab-verification-truststore.jks" \
+            -storepass verification-only \
+            app/build/outputs/bundle/release/app-release.aab
 
       - name: Upload signed AAB
         uses: actions/upload-artifact@v4
