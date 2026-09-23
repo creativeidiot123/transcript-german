@@ -113,13 +113,15 @@ internal class CaptionTranslationPipeline(
     }
 
     private suspend fun translatePartial(partial: Partial) {
-        val english = translator.translateGermanToEnglish(partial.german)
+        val english = translator.translateGermanToEnglish(partial.german).trim()
+        check(english.isNotEmpty()) { "Translation returned blank output" }
         currentCoroutineContext().ensureActive()
         onPartialTranslated(partial.german, english)
     }
 
     private suspend fun translateFinal(command: Command.Final) {
-        val english = translator.translateGermanToEnglish(command.german)
+        val english = translator.translateGermanToEnglish(command.german).trim()
+        check(english.isNotEmpty()) { "Translation returned blank output" }
         currentCoroutineContext().ensureActive()
         onFinalTranslated(command.lineId, english)
     }
