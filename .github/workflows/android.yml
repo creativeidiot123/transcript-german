@@ -41,6 +41,7 @@ jobs:
           :app:lintDebug
           :app:assembleDebug
           :app:assembleRelease
+          :app:bundleRelease
           --stacktrace
 
       - name: Upload test APK
