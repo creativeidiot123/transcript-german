@@ -1,0 +1,34 @@
+<resources>
+    <string name="app_name">German Live Captions</string>
+    <string name="screen_title">German Live Captions</string>
+    <string name="screen_subtitle">Primeline Parakeet · fully offline after the first model download</string>
+    <string name="model_ready">German model ready</string>
+    <string name="model_missing">German model not downloaded</string>
+    <string name="model_downloading">Downloading model files: %1$d of %2$d</string>
+    <string name="model_download_failed">Model download failed. Check your connection and free storage, then retry.</string>
+    <string name="model_integrity_failed">Downloaded model failed its integrity check. Retry the download.</string>
+    <string name="download_model">Download model (~671 MB)</string>
+    <string name="retry_download">Retry download</string>
+    <string name="start_listening">Start listening</string>
+    <string name="stop_listening">Stop listening</string>
+    <string name="clear_transcript">Clear transcript</string>
+    <string name="status_idle">Idle</string>
+    <string name="status_starting">Starting speech recognizer…</string>
+    <string name="status_listening">Listening for German speech</string>
+    <string name="status_speech">Speech detected…</string>
+    <string name="status_transcribing">Transcribing utterance…</string>
+    <string name="status_stopping">Stopping…</string>
+    <string name="empty_transcript">Your captions will appear here after each short spoken phrase.</string>
+    <string name="latency_note">This Parakeet model is non-streaming, so text appears after a short pause in speech rather than word-by-word.</string>
+    <string name="permission_denied">Microphone permission is required to create live captions.</string>
+    <string name="error_model_not_ready">The model is not ready. Download it before listening.</string>
+    <string name="error_audio_unavailable">The microphone could not be opened. Check microphone access and try again.</string>
+    <string name="error_asr_init">The speech recognizer could not start. Re-download the model if this keeps happening.</string>
+    <string name="error_backpressure">Transcription could not keep up with incoming audio, so listening stopped instead of dropping speech.</string>
+    <string name="error_unexpected">Live captions stopped because of an unexpected local error.</string>
+    <string name="notification_channel_name">Live captions</string>
+    <string name="notification_channel_description">Shows when German live captioning is using the microphone.</string>
+    <string name="notification_title">German live captions</string>
+    <string name="notification_text">Listening on this device</string>
+    <string name="notification_stop">Stop</string>
+</resources>
