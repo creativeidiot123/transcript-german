@@ -53,7 +53,8 @@ on-device after the selected model is downloaded.
 - Backend for an active session: immutable CaptionService start input. The service does not read
   a mutable picker value after start.
 - Current session/transcript/partial text truth: CaptionSessionStore, process-local and
-  intentionally not durable.
+  intentionally not durable. It also exposes the active session backend while a service session
+  exists so recreated screens render the backend actually in use.
 - Microphone/ASR lifecycle: CaptionService.
 - Runtime microphone permission launcher: MainActivity.
 - UI projection: CaptionViewModel.

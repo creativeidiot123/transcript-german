@@ -8,6 +8,7 @@
     Active-session backend          CaptionService start input
     Screen projection               CaptionViewModel
     Session/transcript truth        CaptionSessionStore (process-local)
+    Active-backend UI projection    CaptionSessionStore from CaptionService input
     Microphone/ASR lifecycle        CaptionService
     AudioRecord resource            AudioCapture
     Primeline native resources      ParakeetRecognizer
@@ -59,9 +60,11 @@ The selection survives configuration recreation with the ViewModel but intention
 process death. The picker is disabled, and the ViewModel rejects changes, while a download or
 caption session is active.
 
-MainActivity reads the selected backend only when starting the foreground service and includes it as
-an explicit Intent extra. CaptionService resolves that input once and passes it through the session
-job. A later UI selection cannot mutate an already-running recognizer.
+MainActivity captures the selected backend when Start is tapped and includes that stable value as
+an explicit Intent extra after microphone permission succeeds. CaptionService resolves that input
+once, records it in CaptionSessionStore for screen projection, and passes it through the session
+job. A recreated Activity/ViewModel therefore renders the backend actually in use, and a later UI
+selection cannot mutate an already-running recognizer.
 
 ## Model installation
 

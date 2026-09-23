@@ -124,7 +124,7 @@ class CaptionService : Service() {
 
         stopReason.set(StopReason.NONE)
         terminalFailureRequested.set(false)
-        store.markStarting()
+        store.markStarting(backend)
 
         sessionGeneration += 1
         val generation = sessionGeneration

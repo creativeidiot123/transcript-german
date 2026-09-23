@@ -30,7 +30,9 @@ class CaptionViewModel(
     private val modelRepository: ModelRepository,
     private val sessionStore: CaptionSessionStore,
 ) : ViewModel() {
-    private val selectedBackend = MutableStateFlow(AsrBackend.PRIMELINE)
+    private val selectedBackend = MutableStateFlow(
+        sessionStore.state.value.activeBackend ?: AsrBackend.PRIMELINE,
+    )
     private val microphonePermissionDenied = MutableStateFlow(false)
     private var pendingStartBackend: AsrBackend? = null
     private var downloadJob: Job? = null
@@ -40,10 +42,11 @@ class CaptionViewModel(
         sessionStore.state,
         selectedBackend,
         microphonePermissionDenied,
-    ) { modelStates, session, backend, permissionDenied ->
+    ) { modelStates, session, selected, permissionDenied ->
+        val effectiveBackend = session.activeBackend ?: selected
         CaptionUiState(
-            selectedBackend = backend,
-            model = modelStates.getValue(backend),
+            selectedBackend = effectiveBackend,
+            model = modelStates.getValue(effectiveBackend),
             isAnyModelDownloading = modelStates.values.any {
                 it is ModelInstallState.Downloading
             },
@@ -53,15 +56,7 @@ class CaptionViewModel(
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = CaptionUiState(
-            selectedBackend = selectedBackend.value,
-            model = modelRepository.stateFor(selectedBackend.value),
-            isAnyModelDownloading = modelRepository.states.value.values.any {
-                it is ModelInstallState.Downloading
-            },
-            session = sessionStore.state.value,
-            microphonePermissionDenied = false,
-        ),
+        initialValue = initialState(),
     )
 
     fun selectBackend(backend: AsrBackend) {
@@ -99,6 +94,21 @@ class CaptionViewModel(
         val backend = pendingStartBackend
         pendingStartBackend = null
         return backend.takeIf { granted }
+    }
+
+    private fun initialState(): CaptionUiState {
+        val session = sessionStore.state.value
+        val backend = session.activeBackend ?: selectedBackend.value
+        val modelStates = modelRepository.states.value
+        return CaptionUiState(
+            selectedBackend = backend,
+            model = modelStates.getValue(backend),
+            isAnyModelDownloading = modelStates.values.any {
+                it is ModelInstallState.Downloading
+            },
+            session = session,
+            microphonePermissionDenied = false,
+        )
     }
 
     class Factory(private val container: AppContainer) : ViewModelProvider.Factory {

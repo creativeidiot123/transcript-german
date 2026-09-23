@@ -1,5 +1,6 @@
 package com.creativeidiot.transcriptgerman.session
 
+import com.creativeidiot.transcriptgerman.model.AsrBackend
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -11,7 +12,7 @@ class CaptionSessionStoreTest {
 
         store.markFailure(CaptionFailure.AUDIO_UNAVAILABLE)
         store.markStopped(clearFailure = false)
-        store.markStarting()
+        store.markStarting(AsrBackend.PRIMELINE)
         store.markListening()
         store.appendFinal("  Guten Morgen  ")
 
@@ -22,9 +23,25 @@ class CaptionSessionStoreTest {
     }
 
     @Test
+    fun activeBackend_survivesScreenRecreationUntilSessionStops() {
+        val store = CaptionSessionStore()
+
+        store.markStarting(AsrBackend.NEMOTRON)
+        store.markListening()
+
+        assertEquals(AsrBackend.NEMOTRON, store.state.value.activeBackend)
+
+        store.markStopping()
+        assertEquals(AsrBackend.NEMOTRON, store.state.value.activeBackend)
+
+        store.markStopped(clearFailure = true)
+        assertNull(store.state.value.activeBackend)
+    }
+
+    @Test
     fun streamingPartial_replacesUntilFinalized() {
         val store = CaptionSessionStore()
-        store.markStarting()
+        store.markStarting(AsrBackend.PRIMELINE)
         store.markListening()
 
         store.updatePartial("Guten")
@@ -43,7 +60,7 @@ class CaptionSessionStoreTest {
     @Test
     fun markStopping_preservesTranscriptAndMovesToStopping() {
         val store = CaptionSessionStore()
-        store.markStarting()
+        store.markStarting(AsrBackend.PRIMELINE)
         store.markListening()
         store.appendFinal("Hallo Welt")
 
@@ -58,7 +75,7 @@ class CaptionSessionStoreTest {
     @Test
     fun lateActivityCallbacks_doNotLeaveStoppingState() {
         val store = CaptionSessionStore()
-        store.markStarting()
+        store.markStarting(AsrBackend.PRIMELINE)
         store.markListening()
         store.markStopping()
 
@@ -94,7 +111,7 @@ class CaptionSessionStoreTest {
     fun stoppingAfterFailure_keepsFailureUntilNextStart() {
         val store = CaptionSessionStore()
 
-        store.markStarting()
+        store.markStarting(AsrBackend.PRIMELINE)
         store.updatePartial("discard me")
         store.markFailure(CaptionFailure.AUDIO_BACKPRESSURE)
         store.markStopped(clearFailure = false)
@@ -103,7 +120,7 @@ class CaptionSessionStoreTest {
         assertEquals("", store.state.value.partialText)
         assertEquals(CaptionFailure.AUDIO_BACKPRESSURE, store.state.value.failure)
 
-        store.markStarting()
+        store.markStarting(AsrBackend.PRIMELINE)
 
         assertNull(store.state.value.failure)
     }

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -22,6 +23,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.creativeidiot.transcriptgerman.R
 import com.creativeidiot.transcriptgerman.model.AsrBackend
@@ -171,7 +176,9 @@ private fun BackendPicker(
             style = MaterialTheme.typography.titleMedium,
         )
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .selectableGroup(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             BackendButton(
@@ -205,11 +212,16 @@ private fun BackendButton(
         AsrBackend.NEMOTRON -> stringResource(R.string.backend_nemotron)
     }
 
+    val selectionSemantics = modifier.semantics {
+        this.selected = selected
+        role = Role.RadioButton
+    }
+
     if (selected) {
         Button(
             onClick = { onSelected(backend) },
             enabled = enabled,
-            modifier = modifier,
+            modifier = selectionSemantics,
         ) {
             Text(label)
         }
@@ -217,7 +229,7 @@ private fun BackendButton(
         OutlinedButton(
             onClick = { onSelected(backend) },
             enabled = enabled,
-            modifier = modifier,
+            modifier = selectionSemantics,
         ) {
             Text(label)
         }

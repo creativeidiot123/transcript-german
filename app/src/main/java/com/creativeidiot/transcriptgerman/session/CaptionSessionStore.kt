@@ -1,5 +1,6 @@
 package com.creativeidiot.transcriptgerman.session
 
+import com.creativeidiot.transcriptgerman.model.AsrBackend
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +33,7 @@ data class CaptionSessionState(
     val status: CaptionSessionStatus = CaptionSessionStatus.IDLE,
     val lines: List<CaptionLine> = emptyList(),
     val partialText: String = "",
+    val activeBackend: AsrBackend? = null,
     val failure: CaptionFailure? = null,
 )
 
@@ -41,11 +43,12 @@ class CaptionSessionStore {
 
     val state: StateFlow<CaptionSessionState> = _state.asStateFlow()
 
-    fun markStarting() {
+    fun markStarting(backend: AsrBackend) {
         _state.update {
             it.copy(
                 status = CaptionSessionStatus.STARTING,
                 partialText = "",
+                activeBackend = backend,
                 failure = null,
             )
         }
@@ -150,6 +153,7 @@ class CaptionSessionStore {
             it.copy(
                 status = CaptionSessionStatus.IDLE,
                 partialText = "",
+                activeBackend = null,
                 failure = if (clearFailure) null else it.failure,
             )
         }
