@@ -139,7 +139,7 @@ the wrong German line.
 On explicit user Stop, the audio queue drains, ASR flushes, any trailing final enters translation,
 then the translation pipeline drains before the session becomes idle. On failure, translation work
 is cancelled and a cancellation check prevents a result from being committed after cancellation.
-The pipeline closes Bergamot native resources in finally.
+The pipeline closes Bergamot native resources in finally. CaptionService performs the final translation/recognizer teardown inside a NonCancellable cleanup section so a terminal failure cannot interrupt native-resource release or the final stopped-state handoff.
 
 ## State and durability
 
