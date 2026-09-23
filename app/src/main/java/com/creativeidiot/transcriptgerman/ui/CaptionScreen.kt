@@ -3,6 +3,7 @@ package com.creativeidiot.transcriptgerman.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.creativeidiot.transcriptgerman.R
+import com.creativeidiot.transcriptgerman.model.AsrBackend
 import com.creativeidiot.transcriptgerman.model.ModelInstallFailure
 import com.creativeidiot.transcriptgerman.model.ModelInstallState
 import com.creativeidiot.transcriptgerman.session.CaptionFailure
@@ -31,6 +33,7 @@ import com.creativeidiot.transcriptgerman.session.CaptionSessionStatus
 @Composable
 fun CaptionScreen(
     state: CaptionUiState,
+    onBackendSelected: (AsrBackend) -> Unit,
     onDownloadModel: () -> Unit,
     onStartListening: () -> Unit,
     onStopListening: () -> Unit,
@@ -38,11 +41,13 @@ fun CaptionScreen(
     modifier: Modifier = Modifier,
 ) {
     val lines = state.session.lines
+    val partialText = state.session.partialText
     val listState = rememberLazyListState()
 
-    LaunchedEffect(lines.size) {
-        if (lines.isNotEmpty()) {
-            listState.scrollToItem(lines.size)
+    LaunchedEffect(lines.size, partialText) {
+        val lastTranscriptIndex = lines.size + if (partialText.isNotBlank()) 1 else 0
+        if (lastTranscriptIndex > 0) {
+            listState.scrollToItem(lastTranscriptIndex)
         }
     }
 
@@ -79,8 +84,17 @@ fun CaptionScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                             )
 
+                            BackendPicker(
+                                selected = state.selectedBackend,
+                                enabled = state.session.status == CaptionSessionStatus.IDLE &&
+                                    !state.isAnyModelDownloading,
+                                onSelected = onBackendSelected,
+                            )
+
                             ModelStatus(
+                                backend = state.selectedBackend,
                                 model = state.model,
+                                downloadEnabled = !state.isAnyModelDownloading,
                                 onDownloadModel = onDownloadModel,
                             )
 
@@ -89,13 +103,19 @@ fun CaptionScreen(
                             SessionStatus(state)
 
                             Text(
-                                text = stringResource(R.string.latency_note),
+                                text = when (state.selectedBackend) {
+                                    AsrBackend.PRIMELINE ->
+                                        stringResource(R.string.latency_note_primeline)
+
+                                    AsrBackend.NEMOTRON ->
+                                        stringResource(R.string.latency_note_nemotron)
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
                     }
 
-                    if (lines.isEmpty()) {
+                    if (lines.isEmpty() && partialText.isBlank()) {
                         item {
                             Text(
                                 text = stringResource(R.string.empty_transcript),
@@ -113,6 +133,16 @@ fun CaptionScreen(
                                 style = MaterialTheme.typography.bodyLarge,
                             )
                         }
+
+                        if (partialText.isNotBlank()) {
+                            item(key = "partial-caption") {
+                                Text(
+                                    text = partialText,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -128,8 +158,77 @@ fun CaptionScreen(
 }
 
 @Composable
+private fun BackendPicker(
+    selected: AsrBackend,
+    enabled: Boolean,
+    onSelected: (AsrBackend) -> Unit,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.backend_picker_label),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            BackendButton(
+                backend = AsrBackend.PRIMELINE,
+                selected = selected == AsrBackend.PRIMELINE,
+                enabled = enabled,
+                onSelected = onSelected,
+                modifier = Modifier.weight(1f),
+            )
+            BackendButton(
+                backend = AsrBackend.NEMOTRON,
+                selected = selected == AsrBackend.NEMOTRON,
+                enabled = enabled,
+                onSelected = onSelected,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun BackendButton(
+    backend: AsrBackend,
+    selected: Boolean,
+    enabled: Boolean,
+    onSelected: (AsrBackend) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val label = when (backend) {
+        AsrBackend.PRIMELINE -> stringResource(R.string.backend_primeline)
+        AsrBackend.NEMOTRON -> stringResource(R.string.backend_nemotron)
+    }
+
+    if (selected) {
+        Button(
+            onClick = { onSelected(backend) },
+            enabled = enabled,
+            modifier = modifier,
+        ) {
+            Text(label)
+        }
+    } else {
+        OutlinedButton(
+            onClick = { onSelected(backend) },
+            enabled = enabled,
+            modifier = modifier,
+        ) {
+            Text(label)
+        }
+    }
+}
+
+@Composable
 private fun ModelStatus(
+    backend: AsrBackend,
     model: ModelInstallState,
+    downloadEnabled: Boolean,
     onDownloadModel: () -> Unit,
 ) {
     when (model) {
@@ -137,9 +236,15 @@ private fun ModelStatus(
             Text(stringResource(R.string.model_missing))
             Button(
                 onClick = onDownloadModel,
+                enabled = downloadEnabled,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(stringResource(R.string.download_model))
+                Text(
+                    when (backend) {
+                        AsrBackend.PRIMELINE -> stringResource(R.string.download_primeline_model)
+                        AsrBackend.NEMOTRON -> stringResource(R.string.download_nemotron_model)
+                    },
+                )
             }
         }
 
@@ -182,6 +287,7 @@ private fun ModelStatus(
             )
             Button(
                 onClick = onDownloadModel,
+                enabled = downloadEnabled,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(R.string.retry_download))
