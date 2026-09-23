@@ -26,18 +26,18 @@ class BergamotModelInstallVerifierTest {
         val directory = BergamotModelSpec.directory(filesDir)
         val modelDirectory = File(directory, "deen.student.base").apply { mkdirs() }
 
-        File(modelDirectory, BergamotModelSpec.MODEL_FILE).writeText("model")
-        File(modelDirectory, BergamotModelSpec.VOCAB_FILE).writeText("vocab")
-        File(modelDirectory, BergamotModelSpec.SHORTLIST_FILE).writeText("lex")
+        File(modelDirectory, "model.intgemm.alphas.bin").writeText("model")
+        File(modelDirectory, "vocab.deen.spm").writeText("vocab")
+        File(modelDirectory, "lex.s2t.bin").writeText("lex")
         File(modelDirectory, BergamotModelSpec.CONFIG_FILE).writeText("config")
         File(directory, BergamotModelInstallVerifier.INSTALL_MARKER)
             .writeText(BergamotModelSpec.ARCHIVE_SHA256)
 
         val files = BergamotModelInstallVerifier.installedFilesOrNull(filesDir)
 
-        assertEquals(BergamotModelSpec.MODEL_FILE, files?.model?.name)
-        assertEquals(BergamotModelSpec.VOCAB_FILE, files?.vocab?.name)
-        assertEquals(BergamotModelSpec.SHORTLIST_FILE, files?.shortlist?.name)
+        assertEquals("model.intgemm.alphas.bin", files?.model?.name)
+        assertEquals(listOf("vocab.deen.spm"), files?.vocabs?.map { it.name })
+        assertEquals("lex.s2t.bin", files?.shortlist?.name)
         assertEquals(BergamotModelSpec.CONFIG_FILE, files?.config?.name)
     }
 
@@ -56,10 +56,10 @@ class BergamotModelInstallVerifierTest {
         val second = File(directory, "second").apply { mkdirs() }
 
         listOf(first, second).forEach { modelDirectory ->
-            File(modelDirectory, BergamotModelSpec.MODEL_FILE).writeText("model")
+            File(modelDirectory, "model.intgemm.alphas.bin").writeText("model")
         }
-        File(first, BergamotModelSpec.VOCAB_FILE).writeText("vocab")
-        File(first, BergamotModelSpec.SHORTLIST_FILE).writeText("lex")
+        File(first, "vocab.deen.spm").writeText("vocab")
+        File(first, "lex.s2t.bin").writeText("lex")
         File(first, BergamotModelSpec.CONFIG_FILE).writeText("config")
         File(directory, BergamotModelInstallVerifier.INSTALL_MARKER)
             .writeText(BergamotModelSpec.ARCHIVE_SHA256)
