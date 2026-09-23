@@ -3,7 +3,6 @@ package com.creativeidiot.transcriptgerman.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -170,27 +169,23 @@ private fun ModelPicker(
             text = stringResource(R.string.model_picker_label),
             style = MaterialTheme.typography.titleSmall,
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            AsrBackend.entries.forEach { backend ->
-                FilterChip(
-                    selected = selectedBackend == backend,
-                    onClick = { onSelectBackend(backend) },
-                    enabled = enabled,
-                    label = {
-                        Text(
-                            stringResource(
-                                when (backend) {
-                                    AsrBackend.PRIMELINE -> R.string.model_primeline
-                                    AsrBackend.NEMOTRON -> R.string.model_nemotron
-                                },
-                            ),
-                        )
-                    },
-                )
-            }
+        AsrBackend.entries.forEach { backend ->
+            FilterChip(
+                selected = selectedBackend == backend,
+                onClick = { onSelectBackend(backend) },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+                label = {
+                    Text(
+                        stringResource(
+                            when (backend) {
+                                AsrBackend.PRIMELINE -> R.string.model_primeline
+                                AsrBackend.NEMOTRON -> R.string.model_nemotron
+                            },
+                        ),
+                    )
+                },
+            )
         }
     }
 }
