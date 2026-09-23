@@ -9,7 +9,6 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 
 internal class CaptionTranslationPipeline(
@@ -108,13 +107,13 @@ internal class CaptionTranslationPipeline(
         worker.cancelAndJoin()
     }
 
-    private fun translatePartial(partial: Partial) {
+    private suspend fun translatePartial(partial: Partial) {
         val english = translator.translateGermanToEnglish(partial.german)
         currentCoroutineContext().ensureActive()
         onPartialTranslated(partial.german, english)
     }
 
-    private fun translateFinal(command: Command.Final) {
+    private suspend fun translateFinal(command: Command.Final) {
         val english = translator.translateGermanToEnglish(command.german)
         currentCoroutineContext().ensureActive()
         onFinalTranslated(command.lineId, english)
