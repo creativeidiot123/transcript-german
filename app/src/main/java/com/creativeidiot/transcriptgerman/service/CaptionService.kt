@@ -17,10 +17,14 @@ import androidx.core.app.ServiceCompat
 import com.creativeidiot.transcriptgerman.MainActivity
 import com.creativeidiot.transcriptgerman.R
 import com.creativeidiot.transcriptgerman.TranscriptApplication
+import com.creativeidiot.transcriptgerman.asr.CaptionRecognizer
+import com.creativeidiot.transcriptgerman.asr.NemotronRecognizer
 import com.creativeidiot.transcriptgerman.asr.ParakeetRecognizer
 import com.creativeidiot.transcriptgerman.audio.AudioCapture
+import com.creativeidiot.transcriptgerman.model.AsrBackend
 import com.creativeidiot.transcriptgerman.session.CaptionFailure
 import com.creativeidiot.transcriptgerman.session.CaptionSessionStore
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
@@ -69,7 +73,13 @@ class CaptionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START -> startForegroundSession()
+            ACTION_START -> {
+                val backend = intent.getStringExtra(EXTRA_BACKEND)
+                    ?.let { name -> AsrBackend.values().firstOrNull { it.name == name } }
+                    ?: AsrBackend.PRIMELINE
+                startForegroundSession(backend)
+            }
+
             ACTION_STOP -> requestUserStop()
             else -> stopSelf()
         }
@@ -87,7 +97,7 @@ class CaptionService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun startForegroundSession() {
+    private fun startForegroundSession(backend: AsrBackend) {
         if (sessionJob?.isActive == true) {
             Log.i(TAG, "Ignoring duplicate start; caption session is already active")
             return
@@ -119,33 +129,35 @@ class CaptionService : Service() {
         sessionGeneration += 1
         val generation = sessionGeneration
         sessionJob = serviceScope.launch {
-            runSession(generation)
+            runSession(generation, backend)
         }
     }
 
-    private suspend fun runSession(generation: Long) {
+    private suspend fun runSession(
+        generation: Long,
+        backend: AsrBackend,
+    ) {
         val queue = Channel<FloatArray>(capacity = AUDIO_QUEUE_CAPACITY)
         audioQueue = queue
 
-        var recognizer: ParakeetRecognizer? = null
+        var recognizer: CaptionRecognizer? = null
         var capture: AudioCapture? = null
 
         try {
-            val modelDirectory = container.modelRepository.installedDirectoryOrNull()
+            val modelDirectory = container.modelRepository.installedDirectoryOrNull(backend)
             if (modelDirectory == null) {
                 failSession(CaptionFailure.MODEL_NOT_READY)
                 return
             }
 
             recognizer = try {
-                ParakeetRecognizer(
-                    modelDirectory = modelDirectory,
-                    onSpeechDetected = store::markSpeechDetected,
-                    onTranscribing = store::markTranscribing,
-                    onFinal = store::appendFinal,
-                )
+                createRecognizer(backend, modelDirectory)
             } catch (failure: RuntimeException) {
-                Log.e(TAG, "ASR initialization failed: " + failure.javaClass.simpleName)
+                Log.e(
+                    TAG,
+                    "ASR initialization failed for " + backend.name +
+                        ": " + failure.javaClass.simpleName,
+                )
                 failSession(CaptionFailure.ASR_INITIALIZATION)
                 return
             }
@@ -175,7 +187,11 @@ class CaptionService : Service() {
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: RuntimeException) {
-            Log.e(TAG, "Caption decode failed: " + failure.javaClass.simpleName)
+            Log.e(
+                TAG,
+                "Caption decode failed for " + backend.name +
+                    ": " + failure.javaClass.simpleName,
+            )
             failSession(CaptionFailure.UNEXPECTED)
         } finally {
             capture?.stop()
@@ -194,6 +210,30 @@ class CaptionService : Service() {
             completeSession(generation)
         }
     }
+
+    private fun createRecognizer(
+        backend: AsrBackend,
+        modelDirectory: File,
+    ): CaptionRecognizer =
+        when (backend) {
+            AsrBackend.PRIMELINE -> {
+                ParakeetRecognizer(
+                    modelDirectory = modelDirectory,
+                    onSpeechDetected = store::markSpeechDetected,
+                    onTranscribing = store::markTranscribing,
+                    onFinal = store::appendFinal,
+                )
+            }
+
+            AsrBackend.NEMOTRON -> {
+                NemotronRecognizer(
+                    modelDirectory = modelDirectory,
+                    onTranscribing = store::markTranscribing,
+                    onPartial = store::updatePartial,
+                    onFinal = store::appendFinal,
+                )
+            }
+        }
 
     private fun signalTerminalFailure(failure: CaptionFailure) {
         if (!terminalFailureRequested.compareAndSet(false, true)) return
@@ -286,6 +326,8 @@ class CaptionService : Service() {
             "com.creativeidiot.transcriptgerman.action.START_CAPTIONS"
         const val ACTION_STOP =
             "com.creativeidiot.transcriptgerman.action.STOP_CAPTIONS"
+        const val EXTRA_BACKEND =
+            "com.creativeidiot.transcriptgerman.extra.ASR_BACKEND"
 
         private const val TAG = "CaptionService"
         private const val NOTIFICATION_CHANNEL_ID = "live_captions"
