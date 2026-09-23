@@ -109,7 +109,9 @@ CI also assembles the release variant and publishes the debug APK as an artifact
 ### Signed AAB
 
 A manual `Signed AAB` GitHub Actions workflow builds and verifies a signed release bundle without
-committing signing material. It requires these repository Actions secrets:
+committing signing material. The job is bound to a protected GitHub Actions environment named
+`release` and only runs from `main`. Configure that environment to allow deployments from
+`main` only and store these environment secrets there:
 
 - `ANDROID_KEYSTORE_BASE64`: base64-encoded upload keystore.
 - `ANDROID_SIGNING_STORE_PASSWORD`: keystore password.
@@ -117,9 +119,11 @@ committing signing material. It requires these repository Actions secrets:
 - `ANDROID_SIGNING_KEY_PASSWORD`: key password.
 
 The workflow reconstructs the keystore only in the runner temporary directory, runs
-`gradle :app:bundleRelease`, verifies the bundle signature with `jarsigner`, and uploads the AAB
-as a 14-day workflow artifact. Normal PR/main CI remains unsigned and does not require signing
-secrets.
+`gradle :app:bundleRelease`, exports the certificate for the configured upload-key alias into a
+temporary trust store, verifies the AAB against that expected signer with strict `jarsigner`
+verification, and uploads the AAB as a 14-day workflow artifact. Normal PR/main CI remains unsigned
+and does not require signing secrets. Do not duplicate these signing values as repository-wide
+Actions secrets.
 
 ## Licensing/provenance
 
