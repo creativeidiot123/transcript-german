@@ -73,6 +73,27 @@ class CaptionTranslationPipelineTest {
         assertTrue(translator.closed)
     }
 
+    @Test
+    fun translationFailureSignalsOnceAndClosesModel() = runTest {
+        val translator = FailingTranslator()
+        var failures = 0
+
+        val pipeline = CaptionTranslationPipeline(
+            scope = this,
+            translator = translator,
+            onPartialTranslated = { _, _ -> error("no partial expected") },
+            onFinalTranslated = { _, _ -> error("no final expected") },
+            onFailure = { failures += 1 },
+        )
+
+        pipeline.submitFinal(1L, "Fehler")
+        advanceUntilIdle()
+        pipeline.finishAndDrain()
+
+        assertEquals(1, failures)
+        assertTrue(translator.closed)
+    }
+
     private class FakeTranslator : CaptionTranslator {
         val inputs = mutableListOf<String>()
         var closed = false
@@ -80,6 +101,18 @@ class CaptionTranslationPipelineTest {
         override fun translateGermanToEnglish(text: String): String {
             inputs += text
             return "EN:$text"
+        }
+
+        override fun close() {
+            closed = true
+        }
+    }
+
+    private class FailingTranslator : CaptionTranslator {
+        var closed = false
+
+        override fun translateGermanToEnglish(text: String): String {
+            error("synthetic translation failure")
         }
 
         override fun close() {
