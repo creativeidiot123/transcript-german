@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.creativeidiot.transcriptgerman.model.AsrBackend
 import com.creativeidiot.transcriptgerman.service.CaptionService
 import com.creativeidiot.transcriptgerman.ui.CaptionScreen
 import com.creativeidiot.transcriptgerman.ui.CaptionViewModel
@@ -23,9 +24,8 @@ class MainActivity : ComponentActivity() {
 
     private val microphonePermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            viewModel.onMicrophonePermissionResult(granted)
-            if (granted) {
-                startCaptionService()
+            viewModel.onMicrophonePermissionResult(granted)?.let { backend ->
+                startCaptionService(backend)
             }
         }
 
@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity() {
                 val state = viewModel.state.collectAsStateWithLifecycle().value
                 CaptionScreen(
                     state = state,
+                    onBackendSelected = viewModel::selectBackend,
                     onDownloadModel = viewModel::downloadModel,
                     onStartListening = ::requestStartListening,
                     onStopListening = ::stopCaptionService,
@@ -48,7 +49,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestStartListening() {
-        viewModel.prepareMicrophoneRequest()
+        val backend = viewModel.prepareMicrophoneRequest()
 
         if (
             ContextCompat.checkSelfPermission(
@@ -56,16 +57,19 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.RECORD_AUDIO,
             ) == PackageManager.PERMISSION_GRANTED
         ) {
-            startCaptionService()
+            viewModel.consumePreparedStart()
+            startCaptionService(backend)
         } else {
             microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
-    private fun startCaptionService() {
+    private fun startCaptionService(backend: AsrBackend) {
         ContextCompat.startForegroundService(
             this,
-            Intent(this, CaptionService::class.java).setAction(CaptionService.ACTION_START),
+            Intent(this, CaptionService::class.java)
+                .setAction(CaptionService.ACTION_START)
+                .putExtra(CaptionService.EXTRA_BACKEND, backend.wireValue),
         )
     }
 

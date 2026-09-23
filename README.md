@@ -1,33 +1,50 @@
 # German Live Captions
 
-An Android live-captioning MVP focused on spoken German. After the first model download,
-speech recognition runs fully on-device with the German-optimized
-[Primeline Parakeet](https://huggingface.co/primeline/parakeet-primeline) model.
+An Android live-captioning MVP focused on spoken German. The app offers two fully on-device ASR
+backends after their model download:
+
+- **Primeline Parakeet:** the existing German-optimized, VAD-segmented offline transducer.
+- **Nemotron 3.5:** a multilingual streaming transducer configured explicitly for German.
+
+The model picker is available while idle. Primeline remains the default after process start, and
+the selected backend is fixed for the full lifetime of a caption session.
 
 ## Recognition stack
 
-- **ASR model:** `primeline/parakeet-primeline`, using the sherpa-onnx-compatible INT8 export
-  from `flozen1981/parakeet-primeline-onnx`, pinned to revision
-  `d548e25b9bfe559aa274f361892dc4ed5d64743a`.
-- **Runtime:** sherpa-onnx 1.13.8, CPU inference, four ASR threads.
-- **Segmentation:** Silero VAD at 16 kHz.
-- **Audio:** microphone only, 16 kHz mono PCM.
-- **Privacy:** audio is never written to disk and transcript text is never sent to a server or
-  written to logs.
+### Primeline
 
-The Primeline export is a non-streaming transducer. This app is therefore **near-live,
-utterance-based captions**: text appears after a short speech pause rather than token-by-token.
+- Model: primeline/parakeet-primeline, using the sherpa-onnx-compatible INT8 export from
+  flozen1981/parakeet-primeline-onnx.
+- Export revision: d548e25b9bfe559aa274f361892dc4ed5d64743a.
+- Runtime: sherpa-onnx 1.13.8, CPU inference, four ASR threads.
+- Segmentation: Silero VAD at 16 kHz.
+- Behavior: near-live, utterance-based captions. Text appears after a short speech pause.
 
-## First-run model download
+### Nemotron 3.5
 
-The app downloads about 671 MB into its private app storage. The large ONNX assets and Silero VAD
-are SHA-256 verified. Model installation becomes ready only after every required file has finished
-and a revision install marker is committed. Interrupted `.part` files are never accepted as a
-valid model.
+- Base model: nvidia/nemotron-3.5-asr-streaming-0.6b.
+- sherpa-onnx export: 560-ms INT8 streaming transducer from the csukuangfj2 model repository,
+  pinned to revision ab43d895f5985b1bbab8b6eac8607fcdc05343f3.
+- Runtime: sherpa-onnx 1.13.8 OnlineRecognizer, CPU inference, four ASR threads.
+- Language: German is forced per stream with language=de.
+- Behavior: partial text updates while the speaker is talking and is finalized at streaming
+  endpoints.
 
-The Primeline model/export uses CC BY 4.0. Attribution belongs to PrimeLine Solutions for the
-German fine-tune and NVIDIA for the Parakeet base model/architecture; see the linked model cards
-for the complete upstream notices.
+Both backends use microphone-only 16 kHz mono PCM. Audio is never written to disk. Transcript and
+partial caption text stay in process memory and are never uploaded or logged.
+
+## Model downloads
+
+Each backend has an independent app-private install directory and revision marker.
+
+Primeline downloads about 671 MB. Nemotron downloads about 682 MB. Files are first written as
+partial files, validated, and only then committed. Every asset has an exact expected byte length;
+the ONNX graph assets also have pinned SHA-256 digests. An interrupted or invalid download is never
+reported ready.
+
+The existing Primeline model/export uses CC BY 4.0. Nemotron model weights are under NVIDIA
+OpenMDW-1.1. The Nemotron model family is © NVIDIA CORPORATION & AFFILIATES and is licensed under
+the NVIDIA Open Model Data Warehouse License Agreement v1.1.
 
 ## Build
 
@@ -37,28 +54,29 @@ Requirements:
 - Android SDK 35
 - Gradle 8.10.2
 
-The sherpa-onnx AAR is downloaded from the official sherpa-onnx v1.13.8 release during
-`preBuild` and verified against its published SHA-256.
+The sherpa-onnx AAR is downloaded from the official sherpa-onnx v1.13.8 release during preBuild and
+verified against its published SHA-256.
 
-```bash
-gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
-```
+    gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 
 CI also assembles the release variant.
 
-## MVP behavior
+## App behavior
 
-1. Download the pinned German model.
-2. Tap **Start listening** and grant microphone permission.
-3. The foreground microphone service segments speech with VAD and transcribes finalized
-   utterances locally.
-4. Tap **Stop listening** in the app or foreground-service notification.
-5. **Clear transcript** removes the in-memory caption history.
+1. Choose Primeline or Nemotron 3.5 while idle.
+2. Download the selected model if it is not already installed.
+3. Tap **Start listening** and grant microphone permission.
+4. The foreground microphone service starts with that backend fixed for the session.
+5. Primeline emits finalized VAD-segmented utterances; Nemotron updates a current partial phrase and
+   finalizes it at streaming endpoints.
+6. Tap **Stop listening** in the app or foreground-service notification.
+7. **Clear transcript** removes finalized in-memory caption history.
 
-Transcript history intentionally lives only in process memory. Process death ends the current
-session and clears transcript history; downloaded model files remain installed.
+Transcript history, partial text, and the picker selection intentionally live only in process
+memory. Process death ends the current session and clears those values; downloaded model files
+remain installed.
 
 ## Architecture
 
-See [architecture.md](architecture.md) for ownership, lifecycle, concurrency, and failure
-semantics, and [project.md](project.md) for the product contract and verification matrix.
+See architecture.md for ownership, lifecycle, concurrency, and failure semantics, and project.md for
+the product contract and verification matrix.
