@@ -7,7 +7,7 @@ import org.junit.Test
 
 class RecognizerTuningTest {
     @Test
-    fun localConversationVad_keepsShortPausesWithoutUnboundedSegments() {
+    fun localConversationVad_preservesBriefPausesAndLongerSpeechContext() {
         val config = localConversationVadConfig("silero_vad.onnx")
         val silero = config.sileroVadModelConfig
 
