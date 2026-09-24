@@ -15,6 +15,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class GeminiLiveRecognizerTest {
@@ -68,7 +69,7 @@ class GeminiLiveRecognizerTest {
             withContext(Dispatchers.IO) {
                 GeminiLiveRecognizer.connect(
                     client = client,
-                    apiKey = "test-api-key",
+                    apiKey = "AQ.test-auth-key",
                     onPartial = { interim.complete(it) },
                     onFinal = { final.complete(it) },
                     onFailure = { failed = true },
@@ -85,7 +86,7 @@ class GeminiLiveRecognizerTest {
             val request = server.takeRequest(2, TimeUnit.SECONDS)
             assertNotNull(request)
             assertEquals(
-                "test-api-key",
+                "AQ.test-auth-key",
                 request?.requestUrl?.queryParameter("key"),
             )
 
@@ -104,6 +105,47 @@ class GeminiLiveRecognizerTest {
             client.dispatcher.executorService.shutdown()
         }
     }
+    @Test
+    fun rejectedCredential_isClassifiedAsAuthenticationFailure() = runBlocking {
+        val server = MockWebServer()
+        val client = OkHttpClient()
+
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(400)
+                .setBody(
+                    """{"error":{"message":"API key not valid.","status":"INVALID_ARGUMENT"}}""",
+                ),
+        )
+        server.start()
+
+        try {
+            val failure = assertThrows(GeminiLiveConnectionException::class.java) {
+                runBlocking {
+                    withContext(Dispatchers.IO) {
+                        GeminiLiveRecognizer.connect(
+                            client = client,
+                            apiKey = "AQ.rejected-auth-key",
+                            onPartial = {},
+                            onFinal = {},
+                            onFailure = {},
+                            endpoint = server.url("/live"),
+                        )
+                    }
+                }
+            }
+
+            assertEquals(
+                GeminiLiveConnectionException.Reason.AUTHENTICATION,
+                failure.reason,
+            )
+        } finally {
+            server.shutdown()
+            client.connectionPool.evictAll()
+            client.dispatcher.executorService.shutdown()
+        }
+    }
+
     @Test
     fun finishCapturesFinalTranscriptEvenWithoutPriorInterim() = runBlocking {
         val server = MockWebServer()
@@ -145,7 +187,7 @@ class GeminiLiveRecognizerTest {
         val recognizer = withContext(Dispatchers.IO) {
             GeminiLiveRecognizer.connect(
                 client = client,
-                apiKey = "test-api-key",
+                apiKey = "AQ.test-auth-key",
                 onPartial = { error("no interim expected") },
                 onFinal = { final.complete(it) },
                 onFailure = { failed = true },
