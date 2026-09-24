@@ -1,10 +1,12 @@
 <resources>
     <string name="app_name">German + English Live Captions</string>
     <string name="screen_title">German + English Live Captions</string>
-    <string name="screen_subtitle">German speech stays on-device and is translated locally to English with Bergamot.</string>
+    <string name="screen_subtitle_local">German speech stays on-device and is translated locally to English with Bergamot.</string>
+    <string name="screen_subtitle_gemini">Gemini streams microphone audio to Google for German transcription. English translation still runs locally with Bergamot.</string>
     <string name="backend_picker_label">Recognition backend</string>
     <string name="backend_primeline">Primeline</string>
     <string name="backend_nemotron">Nemotron 3.5</string>
+    <string name="backend_gemini">Gemini 3.5 Transcribe Live</string>
     <string name="recognition_model_label">German speech model</string>
     <string name="translation_model_label">German → English translation model</string>
     <string name="model_ready">Model ready</string>
@@ -16,6 +18,14 @@
     <string name="download_nemotron_model">Download Nemotron (~682 MB)</string>
     <string name="download_bergamot_model">Download Bergamot de-en-base INT8</string>
     <string name="retry_download">Retry download</string>
+    <string name="gemini_api_key_label">Gemini API key</string>
+    <string name="gemini_api_key_field">API key</string>
+    <string name="gemini_api_key_saved">API key saved on this device</string>
+    <string name="gemini_api_key_missing">Add an API key before starting Gemini captions.</string>
+    <string name="gemini_api_key_save">Save key</string>
+    <string name="gemini_api_key_clear">Remove key</string>
+    <string name="gemini_api_key_storage_note">The key is encrypted with Android Keystore and kept across app restarts. It is not backed up or logged.</string>
+    <string name="gemini_api_key_storage_failed">The API key could not be saved securely on this device.</string>
     <string name="start_listening">Start listening</string>
     <string name="stop_listening">Stop listening</string>
     <string name="clear_transcript">Clear transcript</string>
@@ -32,18 +42,21 @@
     <string name="translation_unavailable">Translation unavailable</string>
     <string name="latency_note_primeline">Primeline finalizes German after a short speech pause; Bergamot then adds the English translation.</string>
     <string name="latency_note_nemotron">Nemotron 3.5 updates German while you speak; Bergamot follows with the latest English partial and final translation.</string>
+    <string name="latency_note_gemini">Gemini 3.5 streams German interim and final transcripts over the network; Bergamot translates the newest German captions locally.</string>
     <string name="permission_denied">Microphone permission is required to create live captions.</string>
     <string name="error_model_not_ready">The selected speech model is not ready. Download it before listening.</string>
     <string name="error_translation_model_not_ready">The Bergamot German → English model is not ready. Download it before listening.</string>
     <string name="error_audio_unavailable">The microphone could not be opened. Check microphone access and try again.</string>
     <string name="error_asr_init">The speech recognizer could not start. Re-download the selected speech model if this keeps happening.</string>
     <string name="error_translation_init">The local translation engine could not start. Re-download the Bergamot model if this keeps happening.</string>
+    <string name="error_gemini_key_missing">Gemini needs an API key saved in the app before listening.</string>
+    <string name="error_gemini_connection">Gemini live transcription could not connect or the live session ended. Check the API key and network, then start again.</string>
     <string name="error_backpressure">Transcription could not keep up with incoming audio, so listening stopped instead of dropping speech.</string>
     <string name="error_translation">English translation stopped unexpectedly, so the caption session was stopped instead of silently showing German only.</string>
     <string name="error_unexpected">Live captions stopped because of an unexpected local error.</string>
     <string name="notification_channel_name">Live captions</string>
     <string name="notification_channel_description">Shows when German and English live captioning is using the microphone.</string>
     <string name="notification_title">German + English live captions</string>
-    <string name="notification_text">Listening and translating on this device</string>
+    <string name="notification_text">Listening for captions</string>
     <string name="notification_stop">Stop</string>
 </resources>
