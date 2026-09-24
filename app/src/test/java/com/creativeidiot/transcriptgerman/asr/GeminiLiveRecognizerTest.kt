@@ -105,6 +105,43 @@ class GeminiLiveRecognizerTest {
         }
     }
     @Test
+    fun rejectedApiKeyIsReportedAsAuthenticationFailure() = runBlocking {
+        val server = MockWebServer()
+        val client = OkHttpClient()
+
+        server.enqueue(MockResponse().setResponseCode(401))
+        server.start()
+
+        try {
+            val failure = try {
+                withContext(Dispatchers.IO) {
+                    GeminiLiveRecognizer.connect(
+                        client = client,
+                        apiKey = "rejected-key",
+                        onPartial = {},
+                        onFinal = {},
+                        onFailure = {},
+                        endpoint = server.url("/live"),
+                    )
+                }
+                error("Expected Gemini authentication failure")
+            } catch (failure: GeminiLiveConnectionException) {
+                failure
+            }
+
+            assertEquals(
+                GeminiLiveConnectionFailure.AUTHENTICATION,
+                failure.failure,
+            )
+            assertEquals(401, failure.httpStatusCode)
+        } finally {
+            server.shutdown()
+            client.connectionPool.evictAll()
+            client.dispatcher.executorService.shutdown()
+        }
+    }
+
+    @Test
     fun finishCapturesFinalTranscriptEvenWithoutPriorInterim() = runBlocking {
         val server = MockWebServer()
         val client = OkHttpClient()

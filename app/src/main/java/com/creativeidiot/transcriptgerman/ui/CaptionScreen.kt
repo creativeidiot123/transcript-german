@@ -236,6 +236,8 @@ private fun SessionStatus(state: CaptionUiState) {
                     stringResource(R.string.error_translation_init)
                 CaptionFailure.GEMINI_API_KEY_NOT_CONFIGURED ->
                     stringResource(R.string.error_gemini_key_missing)
+                CaptionFailure.GEMINI_AUTHENTICATION ->
+                    stringResource(R.string.error_gemini_authentication)
                 CaptionFailure.GEMINI_CONNECTION ->
                     stringResource(R.string.error_gemini_connection)
                 CaptionFailure.AUDIO_BACKPRESSURE -> stringResource(R.string.error_backpressure)

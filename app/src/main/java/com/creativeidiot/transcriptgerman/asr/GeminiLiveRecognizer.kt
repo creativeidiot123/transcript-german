@@ -16,7 +16,21 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 
-internal class GeminiLiveConnectionException : IOException()
+internal enum class GeminiLiveConnectionFailure {
+    AUTHENTICATION,
+    CONNECTION,
+}
+
+internal class GeminiLiveConnectionException(
+    val failure: GeminiLiveConnectionFailure = GeminiLiveConnectionFailure.CONNECTION,
+    val httpStatusCode: Int? = null,
+) : IOException()
+
+private fun Response?.toGeminiConnectionFailure(): GeminiLiveConnectionFailure =
+    when (this?.code) {
+        400, 401, 403 -> GeminiLiveConnectionFailure.AUTHENTICATION
+        else -> GeminiLiveConnectionFailure.CONNECTION
+    }
 
 internal class GeminiLiveRecognizer private constructor(
     private val webSocket: WebSocket,
@@ -173,7 +187,12 @@ internal class GeminiLiveRecognizer private constructor(
                     response: Response?,
                 ) {
                     if (!setup.isCompleted) {
-                        setup.completeExceptionally(GeminiLiveConnectionException())
+                        setup.completeExceptionally(
+                            GeminiLiveConnectionException(
+                                failure = response.toGeminiConnectionFailure(),
+                                httpStatusCode = response?.code,
+                            ),
+                        )
                     } else {
                         recognizerRef.get()?.signalFailure()
                     }
@@ -213,6 +232,9 @@ internal class GeminiLiveRecognizer private constructor(
             } catch (cancelled: CancellationException) {
                 recognizer.close()
                 throw cancelled
+            } catch (failure: GeminiLiveConnectionException) {
+                recognizer.close()
+                throw failure
             } catch (_: IOException) {
                 recognizer.close()
                 throw GeminiLiveConnectionException()
