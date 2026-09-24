@@ -6,6 +6,7 @@
     <string name="backend_picker_label">Recognition backend</string>
     <string name="backend_primeline">Primeline</string>
     <string name="backend_nemotron">Nemotron 3.5</string>
+    <string name="backend_canary">Canary 180M Flash</string>
     <string name="backend_gemini">Gemini 3.5 Transcribe Live</string>
     <string name="recognition_model_label">German speech model</string>
     <string name="translation_model_label">German → English translation model</string>
@@ -16,6 +17,7 @@
     <string name="model_integrity_failed">Downloaded model failed its integrity check. Retry the download.</string>
     <string name="download_primeline_model">Download Primeline (~671 MB)</string>
     <string name="download_nemotron_model">Download Nemotron (~682 MB)</string>
+    <string name="download_canary_model">Download Canary (~208 MB)</string>
     <string name="download_bergamot_model">Download Bergamot de-en-base INT8</string>
     <string name="retry_download">Retry download</string>
     <string name="gemini_api_key_label">Gemini API key</string>
@@ -42,6 +44,7 @@
     <string name="translation_unavailable">Translation unavailable</string>
     <string name="latency_note_primeline">Primeline finalizes German after a short speech pause; Bergamot then adds the English translation.</string>
     <string name="latency_note_nemotron">Nemotron 3.5 updates German while you speak; Bergamot follows with the latest English partial and final translation.</string>
+    <string name="latency_note_canary">Canary finalizes German after a short speech pause; Bergamot then adds the English translation.</string>
     <string name="latency_note_gemini">Gemini 3.5 streams German interim and final transcripts over the network; Bergamot translates the newest German captions locally.</string>
     <string name="permission_denied">Microphone permission is required to create live captions.</string>
     <string name="error_model_not_ready">The selected speech model is not ready. Download it before listening.</string>
