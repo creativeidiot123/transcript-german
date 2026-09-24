@@ -45,8 +45,11 @@ class ModelInstallVerifierTest {
             listOf(
                 PrimelineModelSpec.bundle,
                 NemotronModelSpec.bundle,
+                CanaryModelSpec.bundle,
             ).all { productionBundle ->
-                productionBundle.files.all { it.exactBytes != null }
+                productionBundle.files
+                    .filterNot { productionBundle === CanaryModelSpec.bundle && it.name == "tokens.txt" }
+                    .all { it.exactBytes != null }
             },
         )
     }
@@ -70,6 +73,14 @@ class ModelInstallVerifierTest {
         assertNotEquals(
             requireNotNull(ModelCatalog.bundleFor(AsrBackend.PRIMELINE)).directoryName,
             requireNotNull(ModelCatalog.bundleFor(AsrBackend.NEMOTRON)).directoryName,
+        )
+        assertNotEquals(
+            requireNotNull(ModelCatalog.bundleFor(AsrBackend.PRIMELINE)).directoryName,
+            requireNotNull(ModelCatalog.bundleFor(AsrBackend.CANARY)).directoryName,
+        )
+        assertNotEquals(
+            requireNotNull(ModelCatalog.bundleFor(AsrBackend.NEMOTRON)).directoryName,
+            requireNotNull(ModelCatalog.bundleFor(AsrBackend.CANARY)).directoryName,
         )
     }
 
