@@ -17,6 +17,7 @@ import androidx.core.app.ServiceCompat
 import com.creativeidiot.transcriptgerman.MainActivity
 import com.creativeidiot.transcriptgerman.R
 import com.creativeidiot.transcriptgerman.TranscriptApplication
+import com.creativeidiot.transcriptgerman.asr.CanaryRecognizer
 import com.creativeidiot.transcriptgerman.asr.CaptionRecognizer
 import com.creativeidiot.transcriptgerman.asr.GeminiLiveConnectionException
 import com.creativeidiot.transcriptgerman.asr.GeminiLiveRecognizer
@@ -336,6 +337,15 @@ class CaptionService : Service() {
                     modelDirectory = requireNotNull(modelDirectory),
                     onTranscribing = store::markTranscribing,
                     onPartial = onPartial,
+                    onFinal = onFinal,
+                )
+            }
+
+            AsrBackend.CANARY -> {
+                CanaryRecognizer(
+                    modelDirectory = requireNotNull(modelDirectory),
+                    onSpeechDetected = store::markSpeechDetected,
+                    onTranscribing = store::markTranscribing,
                     onFinal = onFinal,
                 )
             }

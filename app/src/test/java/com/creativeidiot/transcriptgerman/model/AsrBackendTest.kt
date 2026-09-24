@@ -23,6 +23,7 @@ class AsrBackendTest {
     fun onlyGemini_skipsLocalModelInstallation() {
         assertTrue(AsrBackend.PRIMELINE.requiresLocalModel)
         assertTrue(AsrBackend.NEMOTRON.requiresLocalModel)
+        assertTrue(AsrBackend.CANARY.requiresLocalModel)
         assertFalse(AsrBackend.GEMINI.requiresLocalModel)
     }
 }

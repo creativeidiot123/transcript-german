@@ -191,6 +191,13 @@ private fun BackendPicker(
             )
         }
         BackendButton(
+            backend = AsrBackend.CANARY,
+            selected = selected == AsrBackend.CANARY,
+            enabled = enabled,
+            onSelected = onSelected,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        BackendButton(
             backend = AsrBackend.GEMINI,
             selected = selected == AsrBackend.GEMINI,
             enabled = enabled,
@@ -211,6 +218,7 @@ private fun BackendButton(
     val label = when (backend) {
         AsrBackend.PRIMELINE -> stringResource(R.string.backend_primeline)
         AsrBackend.NEMOTRON -> stringResource(R.string.backend_nemotron)
+        AsrBackend.CANARY -> stringResource(R.string.backend_canary)
         AsrBackend.GEMINI -> stringResource(R.string.backend_gemini)
     }
 
@@ -251,6 +259,7 @@ private fun ModelStatus(
         downloadLabel = when (backend) {
             AsrBackend.PRIMELINE -> stringResource(R.string.download_primeline_model)
             AsrBackend.NEMOTRON -> stringResource(R.string.download_nemotron_model)
+            AsrBackend.CANARY -> stringResource(R.string.download_canary_model)
             AsrBackend.GEMINI -> error("Gemini does not use a local model download")
         },
         onDownloadModel = onDownloadModel,

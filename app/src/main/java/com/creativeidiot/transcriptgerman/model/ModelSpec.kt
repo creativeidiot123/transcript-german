@@ -23,6 +23,7 @@ internal object ModelCatalog {
         when (backend) {
             AsrBackend.PRIMELINE -> PrimelineModelSpec.bundle
             AsrBackend.NEMOTRON -> NemotronModelSpec.bundle
+            AsrBackend.CANARY -> CanaryModelSpec.bundle
             AsrBackend.GEMINI -> null
         }
 }
@@ -69,6 +70,48 @@ internal object PrimelineModelSpec {
                 url = MODEL_BASE + "tokens.txt?download=true",
                 exactBytes = 102_132,
                 sha256 = "ba8e4007c65f4bb4358ffe2ecc13d9ccc7a10351151065242b5c3a943e685742",
+            ),
+            ModelFileSpec(
+                name = "silero_vad.onnx",
+                url = SHERPA_MODELS + "silero_vad.onnx",
+                exactBytes = 643_854,
+                sha256 = "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
+            ),
+        ),
+    )
+}
+
+internal object CanaryModelSpec {
+    const val REVISION = "b3fd7d9883a92f767be20b3792b9d54883a2f18f"
+
+    private const val MODEL_BASE =
+        "https://huggingface.co/csukuangfj/" +
+            "sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr-int8/resolve/" +
+            REVISION + "/"
+    private const val SHERPA_MODELS =
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
+
+    val bundle = ModelBundleSpec(
+        revision = REVISION,
+        directoryName = "canary-180m-flash-" + REVISION,
+        files = listOf(
+            ModelFileSpec(
+                name = "encoder.int8.onnx",
+                url = MODEL_BASE + "encoder.int8.onnx?download=true",
+                exactBytes = 132_678_643,
+                sha256 = "7a75b4e2a5857a6dcc0819503bbe3fad66943db4a3ccf21d3f27c633667d303f",
+            ),
+            ModelFileSpec(
+                name = "decoder.int8.onnx",
+                url = MODEL_BASE + "decoder.int8.onnx?download=true",
+                exactBytes = 74_437_848,
+                sha256 = "e41a2ab9c0c2fe81a1e8ade5a45fb02a74bc4db7d1f91b89a54a25e2cf79cba2",
+            ),
+            ModelFileSpec(
+                name = "tokens.txt",
+                url = MODEL_BASE + "tokens.txt?download=true",
+                exactBytes = 50_407,
+                sha256 = "334642526f436058a5564ea0e3e9bd45bf400bd8362f047f2869639a5589d0ae",
             ),
             ModelFileSpec(
                 name = "silero_vad.onnx",
