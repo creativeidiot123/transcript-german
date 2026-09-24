@@ -153,10 +153,12 @@ audio/pcm;rate=16000. interimInputTranscription updates the replaceable German p
 inputTranscription is authoritative final German text and uses the same final-caption path as the
 local recognizers.
 
-On explicit Stop, CaptionService drains the app audio queue, Gemini sends audioStreamEnd, and if a
-live interim hypothesis exists waits up to five seconds for the matching final transcript. A missing
-final is reported as Gemini connection failure rather than silently claiming all accepted speech was
-committed. Then final translation work drains and the WebSocket is closed.
+On explicit Stop, CaptionService drains the app audio queue and Gemini sends audioStreamEnd. If a
+live interim hypothesis exists, the recognizer waits up to five seconds for the matching final
+transcript; a missing final is reported as Gemini connection failure rather than silently claiming
+the visible pending speech was committed. If audio was sent but no interim arrived yet, the
+recognizer gives the server up to two seconds to emit a final without turning silence/no-recognition
+into a false failure. Then final translation work drains and the WebSocket is closed.
 
 Async WebSocket/protocol failures disable further Gemini callbacks and signal one terminal session
 failure. The app does not auto-reconnect or switch recognizers inside the active session. Google's
@@ -174,8 +176,9 @@ still the current partial. Final German lines receive stable line IDs and final 
 only the matching line.
 
 On explicit user Stop, accepted audio drains, ASR finalization completes, then translation drains
-before the session becomes idle. On failure, translation work is cancelled and native/network
-resources are released in NonCancellable service teardown.
+before the session becomes idle. On failure, the recognizer is closed first so asynchronous Gemini
+callbacks cannot append new German after the bilingual translation pipeline is cancelled; native
+and network resources are released in NonCancellable service teardown.
 
 ## State and durability
 
