@@ -110,7 +110,8 @@ internal object CanaryModelSpec {
             ModelFileSpec(
                 name = "tokens.txt",
                 url = MODEL_BASE + "tokens.txt?download=true",
-                minimumBytes = 50_000,
+                exactBytes = 50_407,
+                sha256 = "334642526f436058a5564ea0e3e9bd45bf400bd8362f047f2869639a5589d0ae",
             ),
             ModelFileSpec(
                 name = "silero_vad.onnx",
