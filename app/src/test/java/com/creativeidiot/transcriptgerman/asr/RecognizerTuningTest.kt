@@ -23,6 +23,14 @@ class RecognizerTuningTest {
     }
 
     @Test
+    fun nemotronFinishPadding_matchesSherpaStreamingFlush() {
+        val padding = nemotronFinalPadding(16_000)
+
+        assertEquals(4_800, padding.size)
+        assertTrue(padding.all { it == 0.0f })
+    }
+
+    @Test
     fun nemotronEndpoint_prioritizesResponsiveFinalsAfterDecodedSpeech() {
         val config = nemotronEndpointConfig()
 

@@ -161,7 +161,8 @@ and streams microphone audio to Google for transcription.
   ab43d895f5985b1bbab8b6eac8607fcdc05343f3.
 - Nemotron recognizer: sherpa-onnx OnlineRecognizer, greedy_search, per-stream language=de.
   Endpoint detection keeps sherpa's 2.4-second no-content fallback and 20-second utterance cap while
-  finalizing decoded speech after 0.8 seconds of trailing silence.
+  finalizing decoded speech after 0.8 seconds of trailing silence. Explicit user stop feeds 300 ms
+  of zero tail padding before inputFinished so the stream can flush its final acoustic frames.
 - Canary base model: nvidia/canary-180m-flash.
 - Canary sherpa-onnx INT8 export revision:
   b3fd7d9883a92f767be20b3792b9d54883a2f18f.
@@ -220,7 +221,7 @@ background auto-start, automatic backend benchmarking, or automatic cloud/local 
 
 | Category | MVP proof |
 | --- | --- |
-| Core logic | JVM tests cover ASR manifests, local VAD/Nemotron endpoint tuning, cloud/local catalog separation, Gemini setup/PCM/transcript protocol, Bergamot verification, transcript pairing, and translation ordering. |
+| Core logic | JVM tests cover ASR manifests, local VAD/Nemotron endpoint tuning and final tail-padding contract, cloud/local catalog separation, Gemini setup/PCM/transcript protocol, Bergamot verification, transcript pairing, and translation ordering. |
 | State transitions | JVM tests cover failure/stop/restart, partial replacement, stale-English rejection, final pairing, append, and clear transitions. |
 | Happy-path E2E | MockWebServer test covers Gemini WebSocket setup, API-key query wiring, audio send, interim callback, final callback, and explicit finish. Real Google + microphone remains **UNVERIFIED** until an Android device uses a valid user key. |
 | Persistence/process death | Local model markers are automated. Gemini key encryption/persistence uses real Android Keystore + SharedPreferences and remains **UNVERIFIED** until device/instrumentation execution. |

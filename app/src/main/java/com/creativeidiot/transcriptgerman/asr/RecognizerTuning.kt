@@ -20,6 +20,13 @@ internal fun localConversationVadConfig(modelPath: String): VadModelConfig =
         provider = "cpu",
     )
 
+private const val NEMOTRON_FINAL_PADDING_MILLIS = 300
+
+internal fun nemotronFinalPadding(sampleRate: Int): FloatArray {
+    require(sampleRate > 0) { "sampleRate must be positive" }
+    return FloatArray(sampleRate * NEMOTRON_FINAL_PADDING_MILLIS / 1_000)
+}
+
 internal fun nemotronEndpointConfig(): EndpointConfig =
     EndpointConfig(
         rule1 = EndpointRule(
