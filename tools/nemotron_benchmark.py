@@ -334,14 +334,27 @@ def summarize(config: BenchmarkConfig, init_ms: float, results: list[SampleResul
 
 
 def stress_configs() -> list[BenchmarkConfig]:
-    return [
-        BenchmarkConfig(
-            family="attenuation",
-            label=f"baseline_{db}db_down",
-            attenuation_db=db,
-        )
+    configs = [
+        BenchmarkConfig("attenuation", f"baseline_{db}db_down", attenuation_db=db)
         for db in STRESS_ATTENUATION_DB
     ]
+    candidates = (
+        ("blank_1.0", DEFAULT_ENDPOINT_S, 1.0),
+        ("endpoint_1.0s", 1.0, DEFAULT_BLANK_PENALTY),
+        ("endpoint_1.0s_blank_1.0", 1.0, 1.0),
+    )
+    configs.extend(
+        BenchmarkConfig(
+            "validation",
+            f"{label}_{db}db_down",
+            endpoint_s=endpoint,
+            blank_penalty=penalty,
+            attenuation_db=db,
+        )
+        for db in SWEEP_ATTENUATION_DB
+        for label, endpoint, penalty in candidates
+    )
+    return configs
 
 
 def sweep_configs() -> list[BenchmarkConfig]:
