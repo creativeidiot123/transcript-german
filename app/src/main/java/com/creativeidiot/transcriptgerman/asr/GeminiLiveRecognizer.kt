@@ -228,6 +228,9 @@ internal class GeminiLiveRecognizer private constructor(
             } catch (cancelled: CancellationException) {
                 recognizer.close()
                 throw cancelled
+            } catch (failure: GeminiLiveConnectionException) {
+                recognizer.close()
+                throw failure
             } catch (_: IOException) {
                 recognizer.close()
                 throw GeminiLiveConnectionException()
