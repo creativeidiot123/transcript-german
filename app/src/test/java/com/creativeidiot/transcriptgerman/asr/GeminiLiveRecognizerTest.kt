@@ -29,6 +29,22 @@ class GeminiLiveRecognizerTest {
         server.enqueue(
             MockResponse().withWebSocketUpgrade(
                 object : WebSocketListener() {
+                    override fun onClosing(
+                        webSocket: WebSocket,
+                        code: Int,
+                        reason: String,
+                    ) {
+                        webSocket.close(code, reason)
+                    }
+
+                    override fun onClosing(
+                        webSocket: WebSocket,
+                        code: Int,
+                        reason: String,
+                    ) {
+                        webSocket.close(code, reason)
+                    }
+
                     override fun onMessage(webSocket: WebSocket, text: String) {
                         val root = JSONObject(text)
                         when {
