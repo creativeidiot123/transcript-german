@@ -33,11 +33,20 @@ internal object GeminiLiveProtocol {
                         ),
                     )
                     .put(
-                        "inputAudioTranscription",
+                        "realtimeInputConfig",
                         JSONObject().put(
-                            "languageCodes",
-                            JSONArray().put("de-DE"),
+                            "automaticActivityDetection",
+                            JSONObject().put("silenceDurationMs", 800),
                         ),
+                    )
+                    .put(
+                        "inputAudioTranscription",
+                        JSONObject()
+                            .put(
+                                "languageCodes",
+                                JSONArray().put("de-DE"),
+                            )
+                            .put("mode", "VERBATIM"),
                     ),
             )
             .toString()
