@@ -1,94 +1,112 @@
 # German + English Live Captions
 
-An Android live-captioning MVP for spoken German with paired on-device English translation.
+An Android live-captioning MVP for spoken German with paired local English translation.
 
-The app offers two German ASR backends:
+The app offers three German ASR backends:
 
-- **Primeline Parakeet:** German-optimized, Silero-VAD segmented offline transducer.
-- **Nemotron 3.5:** multilingual streaming transducer configured explicitly for German.
+- **Primeline Parakeet:** on-device German-optimized VAD-segmented ASR.
+- **Nemotron 3.5:** on-device streaming ASR.
+- **Gemini 3.5 Transcribe Live:** cloud streaming ASR using a user-provided Gemini API key.
 
-Both feed one shared **Bergamot de-en-base INT8** translation stage, so every finalized caption is
-shown as German plus English. Nemotron also translates the newest live partial while the speaker is
-talking. Primeline has no ASR partial stream, so its English caption follows each finalized German
-utterance.
+All three feed one shared **Bergamot de-en-base INT8** translation stage, so finalized German
+captions are paired with English. Nemotron and Gemini also expose live German partials that feed the
+latest-only partial translation path.
+
+## Privacy model
+
+Primeline and Nemotron keep microphone audio on-device. Gemini is deliberately different: when
+Gemini is selected, microphone audio is streamed over TLS to Google's Gemini Live API for
+transcription.
+
+The Gemini API key is entered inside the app. It is encrypted at rest with an Android Keystore
+AES-GCM key, saved across app restarts, excluded from backup, never committed to the repository or
+BuildConfig, and removable from the UI. The app does not log the key, request URL, audio, or
+transcript text.
+
+German/English caption state itself remains process-memory only.
 
 ## Recognition stack
 
 ### Primeline
 
-- Model: primeline/parakeet-primeline using the sherpa-onnx-compatible INT8 export from
-  flozen1981/parakeet-primeline-onnx.
-- Export revision: d548e25b9bfe559aa274f361892dc4ed5d64743a.
-- Runtime: sherpa-onnx 1.13.8, CPU inference, four ASR threads.
-- Segmentation: Silero VAD at 16 kHz.
-- Behavior: near-live, utterance-based German captions.
+- primeline/parakeet-primeline
+- sherpa-onnx 1.13.8, CPU, four ASR threads
+- Silero VAD at 16 kHz
+- utterance-based finalized German captions
 
 ### Nemotron 3.5
 
-- Base model: nvidia/nemotron-3.5-asr-streaming-0.6b.
-- sherpa-onnx export: 560-ms INT8 streaming transducer from csukuangfj2, pinned to revision
-  ab43d895f5985b1bbab8b6eac8607fcdc05343f3.
-- Runtime: sherpa-onnx 1.13.8 OnlineRecognizer, CPU inference, four ASR threads.
-- Language: German forced per stream with `language=de`.
-- Behavior: German partial text updates while speaking and finalizes at streaming endpoints.
+- nvidia/nemotron-3.5-asr-streaming-0.6b
+- 560-ms INT8 sherpa-onnx export pinned to
+  ab43d895f5985b1bbab8b6eac8607fcdc05343f3
+- persistent OnlineRecognizer, language forced to German
+- streaming German partials and endpoint finals
+
+### Gemini 3.5 Transcribe Live
+
+- model: gemini-3.5-transcribe-live
+- Gemini Live v1beta BidiGenerateContent WebSocket
+- raw mono signed 16-bit little-endian PCM at 16 kHz
+- existing app chunks are 100 ms
+- de-DE language hint
+- interim and finalized input transcription callbacks
+- documented continuous Live transcription session limit: up to 10 minutes
+- no automatic reconnect or fallback; a failed/expired session stops visibly and can be restarted
+
+Google recommends short-lived ephemeral tokens for production mobile clients. This app intentionally
+uses a user-provided persistent API key because its product contract is BYO-key. The key is not
+embedded in the APK.
 
 ## Translation stack
 
-- Model: Bergamot **German-English base** (`de-en-base`), version 2 / API 1.
-- Official archive:
-  `deen.student.base.v2.caa7c0ce3c8eaf05.tar.gz`.
-- Archive SHA-256:
-  `caa7c0ce3c8eaf05d333dc9458683f4b0375e5eeb604f6fb2c8585f7b70d398b`.
-- Runtime: translate-kit 0.1.0, a thin Android JNI/Kotlin wrapper around the Bergamot/Marian
-  inference engine, built from pinned upstream commit
-  `2dcdcb1559ed405d65ae1ff1e786d3a5ebb933c4`.
-- The pinned translate-kit AAR is reproduced once from that upstream source and published as a
-  repository release asset. Local/CI builds download it and verify SHA-256
-  `e0da38118cd27504a1b6a0037818e7e490f3a4eff1930205e0bb5b774163d60e`.
-- Translation calls are serialized because one loaded Bergamot model is not thread-safe.
-- Final captions are translated in order. Live Nemotron partial translation is latest-wins: stale
-  partials collapse instead of creating an unbounded translation backlog.
+- Bergamot de-en-base, version 2 / API 1
+- archive SHA-256:
+  caa7c0ce3c8eaf05d333dc9458683f4b0375e5eeb604f6fb2c8585f7b70d398b
+- translate-kit 0.1.0 from pinned upstream commit
+  2dcdcb1559ed405d65ae1ff1e786d3a5ebb933c4
+- translation is serialized through one loaded model
+- finalized captions remain ordered
+- live partial translation is latest-only
+
+## Setup
+
+For Primeline or Nemotron:
+
+1. Select the backend.
+2. Download its local speech model.
+3. Download Bergamot.
+4. Start listening.
+
+For Gemini:
+
+1. Select **Gemini 3.5 Transcribe Live**.
+2. Enter your Gemini API key and tap **Save key**.
+3. Download Bergamot if needed.
+4. Start listening.
+
+The saved Gemini key can be replaced or removed while no caption session is active.
 
 ## Model downloads
 
-Primeline, Nemotron, and Bergamot use separate app-private install directories.
+Primeline downloads about 671 MB. Nemotron downloads about 682 MB. Their model assets are revision
+pinned and verified before install markers are committed.
 
-Primeline downloads about 671 MB and Nemotron about 682 MB. Their current verifier uses pinned
-revisions, exact expected asset sizes, and SHA-256 for ONNX graph assets.
+Bergamot is downloaded into a separate app-private directory and its official archive is SHA-256
+verified before safe extraction/commit.
 
-Bergamot is downloaded as the official de-en-base archive. The complete tar.gz is SHA-256 verified
-before extraction. Extraction happens in an app-private staging directory, rejects links/path
-traversal, verifies the required model/vocabulary/shortlist/config files, writes a pinned archive
-marker, and only then commits the install directory.
+Only one model download runs at a time.
 
-Only one model download runs at a time across all three bundles.
+## Session behavior
 
-## Live behavior
+The selected recognition backend is fixed for the session. CaptionService owns the microphone,
+selected recognizer, one Bergamot translation pipeline, and all teardown.
 
-1. Choose Primeline or Nemotron while idle.
-2. Download the selected German ASR model.
-3. Download Bergamot de-en-base INT8.
-4. Tap **Start listening** and grant microphone permission.
-5. The foreground service fixes the selected ASR backend for the session and loads one Bergamot
-   German→English translator.
-6. German appears from ASR. English is attached to the same caption source:
-   - Primeline: paired translation after every finalized VAD utterance.
-   - Nemotron: latest German/English partials while speaking, then one paired finalized line.
-7. **Stop** drains accepted audio, ASR finalization, and accepted final translations before native
-   resources are released.
-8. **Clear transcript** removes finalized bilingual history.
+Audio flows through one bounded 64-element queue. Queue saturation stops the session rather than
+silently dropping speech.
 
-A translation runtime failure stops the session visibly rather than silently switching to
-German-only output.
-
-## Privacy and lifecycle
-
-Microphone audio is never written to disk. German captions, English translations, and current
-partials stay in process memory and are never uploaded or logged. Final history is bounded to the
-latest 200 lines.
-
-Process death ends the current session and clears caption/backend-selection memory. Downloaded
-models stay in app-private storage. App backup is disabled.
+For Gemini, microphone capture starts only after the Live WebSocket setup handshake succeeds. On
+Stop, accepted app audio drains, audioStreamEnd is sent, trailing final transcription is allowed a
+bounded finalization window, final translations drain, then resources close.
 
 ## Build
 
@@ -99,23 +117,14 @@ Requirements:
 - Gradle 8.10.2
 - arm64-v8a shipping ABI
 
-The build downloads and checksum-verifies the pinned sherpa-onnx 1.13.8 AAR and pinned
-translate-kit 0.1.0 AAR. Apache Commons Compress 1.28.0 is used for Bergamot tar.gz extraction.
+Runtime libraries include sherpa-onnx 1.13.8, translate-kit 0.1.0, Apache Commons Compress 1.28.0,
+and OkHttp 4.12.0.
 
     gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 
-CI also assembles the release variant and publishes the debug APK as an artifact.
-
-## Licensing/provenance
-
-Primeline retains its existing CC BY 4.0 model/export terms. Nemotron model weights use NVIDIA
-OpenMDW-1.1.
-
-translate-kit is Apache-2.0 and statically links the Bergamot translation layer (MPL-2.0) plus the
-third-party components documented by that upstream project. The Bergamot German-English base model is CC-BY-SA-4.0 and is downloaded at runtime rather than embedded in the APK. Exact runtime/model provenance is pinned above so a
-shipped binary can be traced to its source/runtime inputs.
+CI also assembles release and uploads the debug APK artifact.
 
 ## Architecture
 
-See `architecture.md` for ownership, lifecycle, concurrency, and failure semantics, and
-`project.md` for the product contract and verification matrix.
+See architecture.md for ownership/lifecycle semantics and project.md for the product contract,
+privacy policy, and verification matrix.
