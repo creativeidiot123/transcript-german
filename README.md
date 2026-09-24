@@ -2,20 +2,21 @@
 
 An Android live-captioning MVP for spoken German with paired local English translation.
 
-The app offers three German ASR backends:
+The app offers four German ASR backends:
 
 - **Primeline Parakeet:** on-device German-optimized VAD-segmented ASR.
 - **Nemotron 3.5:** on-device streaming ASR.
+- **Canary 180M Flash:** on-device multilingual VAD-segmented ASR forced to German.
 - **Gemini 3.5 Transcribe Live:** cloud streaming ASR using a user-provided Gemini API key.
 
-All three feed one shared **Bergamot de-en-base INT8** translation stage, so finalized German
+All four feed one shared **Bergamot de-en-base INT8** translation stage, so finalized German
 captions are paired with English. Nemotron and Gemini also expose live German partials that feed the
 latest-only partial translation path.
 
 ## Privacy model
 
-Primeline and Nemotron keep microphone audio on-device. Gemini is deliberately different: when
-Gemini is selected, microphone audio is streamed over TLS to Google's Gemini Live API for
+Primeline, Nemotron, and Canary keep microphone audio on-device. Gemini is deliberately different:
+when Gemini is selected, microphone audio is streamed over TLS to Google's Gemini Live API for
 transcription.
 
 The Gemini API key is entered inside the app. It is encrypted at rest with an Android Keystore
@@ -41,6 +42,16 @@ German/English caption state itself remains process-memory only.
   ab43d895f5985b1bbab8b6eac8607fcdc05343f3
 - persistent OnlineRecognizer, language forced to German
 - streaming German partials and endpoint finals
+
+### Canary 180M Flash
+
+- nvidia/canary-180m-flash
+- sherpa-onnx INT8 export pinned to
+  b3fd7d9883a92f767be20b3792b9d54883a2f18f
+- sherpa-onnx 1.13.8 OfflineRecognizer, CPU, four ASR threads
+- Silero VAD at 16 kHz
+- source and target language both forced to German with punctuation enabled
+- utterance-based finalized German captions; no streaming partials
 
 ### Gemini 3.5 Transcribe Live
 
@@ -70,7 +81,7 @@ embedded in the APK.
 
 ## Setup
 
-For Primeline or Nemotron:
+For Primeline, Nemotron, or Canary:
 
 1. Select the backend.
 2. Download its local speech model.
@@ -88,8 +99,8 @@ The saved Gemini key can be replaced or removed while no caption session is acti
 
 ## Model downloads
 
-Primeline downloads about 671 MB. Nemotron downloads about 682 MB. Their model assets are revision
-pinned and verified before install markers are committed.
+Primeline downloads about 671 MB. Nemotron downloads about 682 MB. Canary downloads about 208 MB.
+Their model assets are revision pinned and verified before install markers are committed.
 
 Bergamot is downloaded into a separate app-private directory and its official archive is SHA-256
 verified before safe extraction/commit.
