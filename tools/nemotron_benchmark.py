@@ -333,7 +333,6 @@ def stress_configs() -> list[BenchmarkConfig]:
         for db in STRESS_ATTENUATION_DB
     ]
 
-
 def validation_configs() -> list[BenchmarkConfig]:
     penalties = (0.0, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0)
     return [
@@ -346,7 +345,6 @@ def validation_configs() -> list[BenchmarkConfig]:
         for db in SWEEP_ATTENUATION_DB
         for penalty in penalties
     ]
-
 
 def sweep_configs() -> list[BenchmarkConfig]:
     configs: list[BenchmarkConfig] = []
