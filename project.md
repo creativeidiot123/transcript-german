@@ -89,9 +89,10 @@ streams microphone audio to Google for transcription.
 - Stop is idempotent.
 - Audio uses a bounded queue of 64 100-ms chunks. Saturation is terminal because dropping chunks
   would make captions deceptively incomplete.
-- Gemini uses one WebSocket per session. Audio sends preserve queue order. Async socket failures
-  terminate the active session; the app does not auto-reconnect or silently fall back to another
-  recognizer.
+- Gemini uses one WebSocket per session. Audio sends preserve queue order. The recognizer treats
+  an OkHttp outbound queue of 256 KiB as terminal backpressure so a stalled network cannot build an
+  unbounded/stale live-audio backlog. Async socket failures terminate the active session; the app
+  does not auto-reconnect or silently fall back to another recognizer.
 - Translation uses one serialized worker because the Bergamot model is not thread-safe. Final
   captions use a bounded ordered queue. Partial translation is conflated to the newest German
   hypothesis.
