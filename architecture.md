@@ -73,7 +73,7 @@ credentials.
 
 ## Backend selection
 
-CaptionViewModel is the only mutable owner of picker selection. Primeline is the initial value.
+CaptionViewModel is the only mutable owner of picker selection. Nemotron is the initial value.
 Selection survives configuration recreation with the ViewModel but resets after process death.
 The picker is disabled, and the ViewModel rejects changes, while a download or caption session is
 active.
