@@ -47,9 +47,7 @@ class ModelInstallVerifierTest {
                 NemotronModelSpec.bundle,
                 CanaryModelSpec.bundle,
             ).all { productionBundle ->
-                productionBundle.files
-                    .filterNot { productionBundle === CanaryModelSpec.bundle && it.name == "tokens.txt" }
-                    .all { it.exactBytes != null }
+                productionBundle.files.all { it.exactBytes != null }
             },
         )
     }
