@@ -300,11 +300,13 @@ class CaptionService : Service() {
                         )
                     }
                     translationPipeline?.finishAndDrain()
+                    runCatching { recognizer?.close() }
                 } else {
+                    // Stop asynchronous cloud callbacks before translation cancellation can
+                    // make a late finalized caption impossible to translate.
+                    runCatching { recognizer?.close() }
                     translationPipeline?.cancel()
                 }
-
-                runCatching { recognizer?.close() }
                 audioCapture = null
                 audioQueue = null
                 completeSession(generation)
