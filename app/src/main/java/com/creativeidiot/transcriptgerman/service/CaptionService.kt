@@ -236,9 +236,17 @@ class CaptionService : Service() {
                         }
                     },
                 )
-            } catch (_: GeminiLiveConnectionException) {
-                Log.e(TAG, "Gemini live transcription connection failed")
-                failSession(CaptionFailure.GEMINI_CONNECTION)
+            } catch (failure: GeminiLiveConnectionException) {
+                if (
+                    failure.reason ==
+                    GeminiLiveConnectionException.Reason.AUTHENTICATION
+                ) {
+                    Log.e(TAG, "Gemini API key or project access was rejected")
+                    failSession(CaptionFailure.GEMINI_API_KEY_REJECTED)
+                } else {
+                    Log.e(TAG, "Gemini live transcription connection failed")
+                    failSession(CaptionFailure.GEMINI_CONNECTION)
+                }
                 return
             } catch (failure: RuntimeException) {
                 Log.e(
