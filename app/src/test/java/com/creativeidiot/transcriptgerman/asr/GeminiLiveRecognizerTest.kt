@@ -96,4 +96,66 @@ class GeminiLiveRecognizerTest {
             client.dispatcher.executorService.shutdown()
         }
     }
+    @Test
+    fun finishCapturesFinalTranscriptEvenWithoutPriorInterim() = runTest {
+        val server = MockWebServer()
+        val client = OkHttpClient()
+        val final = CompletableDeferred<String>()
+        var failed = false
+
+        server.enqueue(
+            MockResponse().withWebSocketUpgrade(
+                object : WebSocketListener() {
+                    override fun onMessage(webSocket: WebSocket, text: String) {
+                        val root = JSONObject(text)
+                        when {
+                            root.has("setup") -> {
+                                webSocket.send("""{"setupComplete":{}}""")
+                            }
+
+                            root.optJSONObject("realtimeInput")
+                                ?.optBoolean("audioStreamEnd") == true -> {
+                                webSocket.send(
+                                    """{"serverContent":{"inputTranscription":{"text":"Sofort gestoppt"}}}""",
+                                )
+                            }
+                        }
+                    }
+                },
+            ),
+        )
+        server.start()
+
+        val recognizer = withContext(Dispatchers.IO) {
+            GeminiLiveRecognizer.connect(
+                client = client,
+                apiKey = "test-api-key",
+                onPartial = { error("no interim expected") },
+                onFinal = { final.complete(it) },
+                onFailure = { failed = true },
+                endpoint = server.url("/live"),
+            )
+        }
+
+        try {
+            assertNotNull(server.takeRequest(2, TimeUnit.SECONDS))
+            recognizer.accept(floatArrayOf(0.2f, -0.2f))
+
+            withContext(Dispatchers.IO) {
+                recognizer.finish()
+            }
+
+            assertEquals(
+                "Sofort gestoppt",
+                withContext(Dispatchers.IO) { final.await() },
+            )
+            assertFalse(failed)
+        } finally {
+            recognizer.close()
+            server.shutdown()
+            client.connectionPool.evictAll()
+            client.dispatcher.executorService.shutdown()
+        }
+    }
+
 }
