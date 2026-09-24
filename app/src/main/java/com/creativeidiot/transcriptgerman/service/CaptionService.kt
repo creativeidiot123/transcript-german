@@ -18,6 +18,8 @@ import com.creativeidiot.transcriptgerman.MainActivity
 import com.creativeidiot.transcriptgerman.R
 import com.creativeidiot.transcriptgerman.TranscriptApplication
 import com.creativeidiot.transcriptgerman.asr.CaptionRecognizer
+import com.creativeidiot.transcriptgerman.asr.GeminiLiveConnectionException
+import com.creativeidiot.transcriptgerman.asr.GeminiLiveRecognizer
 import com.creativeidiot.transcriptgerman.asr.NemotronRecognizer
 import com.creativeidiot.transcriptgerman.asr.ParakeetRecognizer
 import com.creativeidiot.transcriptgerman.audio.AudioCapture
@@ -149,9 +151,25 @@ class CaptionService : Service() {
         var translationPipeline: CaptionTranslationPipeline? = null
 
         try {
-            val modelDirectory = container.modelRepository.installedDirectoryOrNull(backend)
-            if (modelDirectory == null) {
+            val modelDirectory =
+                if (backend.requiresLocalModel) {
+                    container.modelRepository.installedDirectoryOrNull(backend)
+                } else {
+                    null
+                }
+            if (backend.requiresLocalModel && modelDirectory == null) {
                 failSession(CaptionFailure.MODEL_NOT_READY)
+                return
+            }
+
+            val geminiApiKey =
+                if (backend == AsrBackend.GEMINI) {
+                    container.geminiApiKeyStore.apiKeyOrNull()
+                } else {
+                    null
+                }
+            if (backend == AsrBackend.GEMINI && geminiApiKey == null) {
+                failSession(CaptionFailure.GEMINI_API_KEY_NOT_CONFIGURED)
                 return
             }
 
@@ -200,6 +218,7 @@ class CaptionService : Service() {
                 createRecognizer(
                     backend = backend,
                     modelDirectory = modelDirectory,
+                    geminiApiKey = geminiApiKey,
                     onPartial = { german ->
                         store.updatePartial(german)
                         if (translationPipeline?.submitPartial(german) == false) {
@@ -216,6 +235,10 @@ class CaptionService : Service() {
                         }
                     },
                 )
+            } catch (_: GeminiLiveConnectionException) {
+                Log.e(TAG, "Gemini live transcription connection failed")
+                failSession(CaptionFailure.GEMINI_CONNECTION)
+                return
             } catch (failure: RuntimeException) {
                 Log.e(
                     TAG,
@@ -263,16 +286,27 @@ class CaptionService : Service() {
 
             withContext(NonCancellable) {
                 if (stopReason.get() == StopReason.USER) {
-                    runCatching { recognizer?.finish() }
-                        .onFailure { failure ->
-                            Log.e(TAG, "Final ASR flush failed: " + failure.javaClass.simpleName)
-                        }
+                    try {
+                        recognizer?.finish()
+                    } catch (_: GeminiLiveConnectionException) {
+                        Log.e(TAG, "Gemini final transcription did not complete")
+                        store.markFailure(CaptionFailure.GEMINI_CONNECTION)
+                        stopReason.set(StopReason.FAILURE)
+                    } catch (failure: RuntimeException) {
+                        Log.e(
+                            TAG,
+                            "Final ASR flush failed: " +
+                                failure.javaClass.simpleName,
+                        )
+                    }
                     translationPipeline?.finishAndDrain()
+                    runCatching { recognizer?.close() }
                 } else {
+                    // Stop asynchronous cloud callbacks before translation cancellation can
+                    // make a late finalized caption impossible to translate.
+                    runCatching { recognizer?.close() }
                     translationPipeline?.cancel()
                 }
-
-                runCatching { recognizer?.close() }
                 audioCapture = null
                 audioQueue = null
                 completeSession(generation)
@@ -280,16 +314,17 @@ class CaptionService : Service() {
         }
     }
 
-    private fun createRecognizer(
+    private suspend fun createRecognizer(
         backend: AsrBackend,
-        modelDirectory: File,
+        modelDirectory: File?,
+        geminiApiKey: String?,
         onPartial: (String) -> Unit,
         onFinal: (String) -> Unit,
     ): CaptionRecognizer =
         when (backend) {
             AsrBackend.PRIMELINE -> {
                 ParakeetRecognizer(
-                    modelDirectory = modelDirectory,
+                    modelDirectory = requireNotNull(modelDirectory),
                     onSpeechDetected = store::markSpeechDetected,
                     onTranscribing = store::markTranscribing,
                     onFinal = onFinal,
@@ -298,10 +333,23 @@ class CaptionService : Service() {
 
             AsrBackend.NEMOTRON -> {
                 NemotronRecognizer(
-                    modelDirectory = modelDirectory,
+                    modelDirectory = requireNotNull(modelDirectory),
                     onTranscribing = store::markTranscribing,
                     onPartial = onPartial,
                     onFinal = onFinal,
+                )
+            }
+
+            AsrBackend.GEMINI -> {
+                GeminiLiveRecognizer.connect(
+                    client = container.geminiHttpClient,
+                    apiKey = requireNotNull(geminiApiKey),
+                    onPartial = onPartial,
+                    onFinal = onFinal,
+                    onFailure = {
+                        Log.e(TAG, "Gemini live transcription stream failed")
+                        signalTerminalFailure(CaptionFailure.GEMINI_CONNECTION)
+                    },
                 )
             }
         }

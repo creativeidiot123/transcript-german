@@ -1,8 +1,12 @@
 package com.creativeidiot.transcriptgerman.model
 
-enum class AsrBackend(val wireValue: String) {
-    PRIMELINE("primeline"),
-    NEMOTRON("nemotron");
+enum class AsrBackend(
+    val wireValue: String,
+    val requiresLocalModel: Boolean,
+) {
+    PRIMELINE("primeline", true),
+    NEMOTRON("nemotron", true),
+    GEMINI("gemini", false);
 
     companion object {
         fun fromWireValue(value: String?): AsrBackend? =

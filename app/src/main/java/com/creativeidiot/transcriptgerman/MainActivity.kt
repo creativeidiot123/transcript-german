@@ -41,6 +41,8 @@ class MainActivity : ComponentActivity() {
                     onBackendSelected = viewModel::selectBackend,
                     onDownloadModel = viewModel::downloadModel,
                     onDownloadTranslationModel = viewModel::downloadTranslationModel,
+                    onSaveGeminiApiKey = viewModel::saveGeminiApiKey,
+                    onClearGeminiApiKey = viewModel::clearGeminiApiKey,
                     onStartListening = ::requestStartListening,
                     onStopListening = ::stopCaptionService,
                     onClearTranscript = viewModel::clearTranscript,
@@ -50,7 +52,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestStartListening() {
-        val backend = viewModel.prepareMicrophoneRequest()
+        val backend = viewModel.prepareMicrophoneRequest() ?: return
 
         if (
             ContextCompat.checkSelfPermission(

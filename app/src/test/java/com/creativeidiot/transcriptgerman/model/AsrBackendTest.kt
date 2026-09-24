@@ -1,7 +1,9 @@
 package com.creativeidiot.transcriptgerman.model
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AsrBackendTest {
@@ -15,5 +17,12 @@ class AsrBackendTest {
         assertNull(AsrBackend.fromWireValue(""))
         assertNull(AsrBackend.fromWireValue("PRIMELINE"))
         assertNull(AsrBackend.fromWireValue("other"))
+    }
+
+    @Test
+    fun onlyGemini_skipsLocalModelInstallation() {
+        assertTrue(AsrBackend.PRIMELINE.requiresLocalModel)
+        assertTrue(AsrBackend.NEMOTRON.requiresLocalModel)
+        assertFalse(AsrBackend.GEMINI.requiresLocalModel)
     }
 }

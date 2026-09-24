@@ -3,17 +3,14 @@ package com.creativeidiot.transcriptgerman.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -23,14 +20,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.creativeidiot.transcriptgerman.R
 import com.creativeidiot.transcriptgerman.model.AsrBackend
-import com.creativeidiot.transcriptgerman.model.ModelInstallFailure
 import com.creativeidiot.transcriptgerman.model.ModelInstallState
 import com.creativeidiot.transcriptgerman.session.CaptionFailure
 import com.creativeidiot.transcriptgerman.session.CaptionLine
@@ -42,6 +34,8 @@ fun CaptionScreen(
     onBackendSelected: (AsrBackend) -> Unit,
     onDownloadModel: () -> Unit,
     onDownloadTranslationModel: () -> Unit,
+    onSaveGeminiApiKey: (String) -> Unit,
+    onClearGeminiApiKey: () -> Unit,
     onStartListening: () -> Unit,
     onStopListening: () -> Unit,
     onClearTranscript: () -> Unit,
@@ -87,36 +81,21 @@ fun CaptionScreen(
                                 style = MaterialTheme.typography.headlineMedium,
                             )
                             Text(
-                                text = stringResource(R.string.screen_subtitle),
+                                text = if (state.selectedBackend == AsrBackend.GEMINI) {
+                                    stringResource(R.string.screen_subtitle_gemini)
+                                } else {
+                                    stringResource(R.string.screen_subtitle_local)
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                             )
 
-                            BackendPicker(
-                                selected = state.selectedBackend,
-                                enabled = state.session.status == CaptionSessionStatus.IDLE &&
-                                    !state.isAnyModelDownloading,
-                                onSelected = onBackendSelected,
-                            )
-
-                            Text(
-                                text = stringResource(R.string.recognition_model_label),
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                            ModelStatus(
-                                backend = state.selectedBackend,
-                                model = state.model,
-                                downloadEnabled = !state.isAnyModelDownloading,
+                            BackendConfiguration(
+                                state = state,
+                                onBackendSelected = onBackendSelected,
                                 onDownloadModel = onDownloadModel,
-                            )
-
-                            Text(
-                                text = stringResource(R.string.translation_model_label),
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                            TranslationModelStatus(
-                                model = state.translationModel,
-                                downloadEnabled = !state.isAnyModelDownloading,
-                                onDownloadModel = onDownloadTranslationModel,
+                                onDownloadTranslationModel = onDownloadTranslationModel,
+                                onSaveGeminiApiKey = onSaveGeminiApiKey,
+                                onClearGeminiApiKey = onClearGeminiApiKey,
                             )
 
                             HorizontalDivider()
@@ -130,6 +109,9 @@ fun CaptionScreen(
 
                                     AsrBackend.NEMOTRON ->
                                         stringResource(R.string.latency_note_nemotron)
+
+                                    AsrBackend.GEMINI ->
+                                        stringResource(R.string.latency_note_gemini)
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -222,179 +204,6 @@ private fun CaptionPair(
 }
 
 @Composable
-private fun BackendPicker(
-    selected: AsrBackend,
-    enabled: Boolean,
-    onSelected: (AsrBackend) -> Unit,
-) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(
-            text = stringResource(R.string.backend_picker_label),
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .selectableGroup(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            BackendButton(
-                backend = AsrBackend.PRIMELINE,
-                selected = selected == AsrBackend.PRIMELINE,
-                enabled = enabled,
-                onSelected = onSelected,
-                modifier = Modifier.weight(1f),
-            )
-            BackendButton(
-                backend = AsrBackend.NEMOTRON,
-                selected = selected == AsrBackend.NEMOTRON,
-                enabled = enabled,
-                onSelected = onSelected,
-                modifier = Modifier.weight(1f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun BackendButton(
-    backend: AsrBackend,
-    selected: Boolean,
-    enabled: Boolean,
-    onSelected: (AsrBackend) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val label = when (backend) {
-        AsrBackend.PRIMELINE -> stringResource(R.string.backend_primeline)
-        AsrBackend.NEMOTRON -> stringResource(R.string.backend_nemotron)
-    }
-
-    val selectionSemantics = modifier.semantics {
-        this.selected = selected
-        role = Role.RadioButton
-    }
-
-    if (selected) {
-        Button(
-            onClick = { onSelected(backend) },
-            enabled = enabled,
-            modifier = selectionSemantics,
-        ) {
-            Text(label)
-        }
-    } else {
-        OutlinedButton(
-            onClick = { onSelected(backend) },
-            enabled = enabled,
-            modifier = selectionSemantics,
-        ) {
-            Text(label)
-        }
-    }
-}
-
-@Composable
-private fun ModelStatus(
-    backend: AsrBackend,
-    model: ModelInstallState,
-    downloadEnabled: Boolean,
-    onDownloadModel: () -> Unit,
-) {
-    InstallStatus(
-        model = model,
-        downloadEnabled = downloadEnabled,
-        downloadLabel = when (backend) {
-            AsrBackend.PRIMELINE -> stringResource(R.string.download_primeline_model)
-            AsrBackend.NEMOTRON -> stringResource(R.string.download_nemotron_model)
-        },
-        onDownloadModel = onDownloadModel,
-    )
-}
-
-@Composable
-private fun TranslationModelStatus(
-    model: ModelInstallState,
-    downloadEnabled: Boolean,
-    onDownloadModel: () -> Unit,
-) {
-    InstallStatus(
-        model = model,
-        downloadEnabled = downloadEnabled,
-        downloadLabel = stringResource(R.string.download_bergamot_model),
-        onDownloadModel = onDownloadModel,
-    )
-}
-
-@Composable
-private fun InstallStatus(
-    model: ModelInstallState,
-    downloadEnabled: Boolean,
-    downloadLabel: String,
-    onDownloadModel: () -> Unit,
-) {
-    when (model) {
-        ModelInstallState.Missing -> {
-            Text(stringResource(R.string.model_missing))
-            Button(
-                onClick = onDownloadModel,
-                enabled = downloadEnabled,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(downloadLabel)
-            }
-        }
-
-        is ModelInstallState.Downloading -> {
-            Text(
-                stringResource(
-                    R.string.model_downloading,
-                    model.fileIndex,
-                    model.totalFiles,
-                ),
-            )
-            val progress = model.fileProgress
-            if (progress == null) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            } else {
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-
-        ModelInstallState.Ready -> {
-            Text(
-                text = stringResource(R.string.model_ready),
-                style = MaterialTheme.typography.titleMedium,
-            )
-        }
-
-        is ModelInstallState.Failed -> {
-            Text(
-                text = when (model.reason) {
-                    ModelInstallFailure.DOWNLOAD_OR_STORAGE ->
-                        stringResource(R.string.model_download_failed)
-
-                    ModelInstallFailure.INTEGRITY ->
-                        stringResource(R.string.model_integrity_failed)
-                },
-                color = MaterialTheme.colorScheme.error,
-            )
-            Button(
-                onClick = onDownloadModel,
-                enabled = downloadEnabled,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.retry_download))
-            }
-        }
-    }
-}
-
-@Composable
 private fun SessionStatus(state: CaptionUiState) {
     Text(
         text = when (state.session.status) {
@@ -422,6 +231,10 @@ private fun SessionStatus(state: CaptionUiState) {
                 CaptionFailure.ASR_INITIALIZATION -> stringResource(R.string.error_asr_init)
                 CaptionFailure.TRANSLATION_INITIALIZATION ->
                     stringResource(R.string.error_translation_init)
+                CaptionFailure.GEMINI_API_KEY_NOT_CONFIGURED ->
+                    stringResource(R.string.error_gemini_key_missing)
+                CaptionFailure.GEMINI_CONNECTION ->
+                    stringResource(R.string.error_gemini_connection)
                 CaptionFailure.AUDIO_BACKPRESSURE -> stringResource(R.string.error_backpressure)
                 CaptionFailure.TRANSLATION -> stringResource(R.string.error_translation)
                 CaptionFailure.UNEXPECTED -> stringResource(R.string.error_unexpected)
@@ -447,8 +260,17 @@ private fun Controls(
     onClearTranscript: () -> Unit,
 ) {
     val running = state.session.status != CaptionSessionStatus.IDLE
+    val recognitionReady =
+        if (state.selectedBackend == AsrBackend.GEMINI) {
+            isGeminiStartAllowed(
+                configured = state.geminiApiKeyConfigured,
+                mutationInProgress = state.geminiApiKeyMutationInProgress,
+            )
+        } else {
+            state.model == ModelInstallState.Ready
+        }
     val modelsReady =
-        state.model == ModelInstallState.Ready &&
+        recognitionReady &&
             state.translationModel == ModelInstallState.Ready
 
     Column(

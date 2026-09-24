@@ -75,7 +75,7 @@ internal class NemotronRecognizer(
         }
     }
 
-    override fun finish() {
+    override suspend fun finish() {
         if (closed) return
 
         stream.inputFinished()

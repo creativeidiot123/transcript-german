@@ -42,7 +42,11 @@ class ModelRepository(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val downloadMutex: Mutex = Mutex(),
 ) {
-    private val bundles = AsrBackend.values().associateWith(ModelCatalog::bundleFor)
+    private val bundles = AsrBackend.entries
+        .mapNotNull { backend ->
+            ModelCatalog.bundleFor(backend)?.let { backend to it }
+        }
+        .toMap()
 
     private val _states = MutableStateFlow(
         bundles.mapValues { (_, bundle) ->
@@ -56,11 +60,11 @@ class ModelRepository(
 
     val states: StateFlow<Map<AsrBackend, ModelInstallState>> = _states.asStateFlow()
 
-    fun stateFor(backend: AsrBackend): ModelInstallState =
-        states.value.getValue(backend)
+    fun stateFor(backend: AsrBackend): ModelInstallState? =
+        states.value[backend]
 
     fun installedDirectoryOrNull(backend: AsrBackend): File? {
-        val bundle = bundles.getValue(backend)
+        val bundle = bundles[backend] ?: return null
         return bundle.directory(filesDir).takeIf {
             ModelInstallVerifier.isInstalled(filesDir, bundle)
         }
@@ -68,7 +72,9 @@ class ModelRepository(
 
     suspend fun download(backend: AsrBackend) {
         downloadMutex.withLock {
-            val bundle = bundles.getValue(backend)
+            val bundle = requireNotNull(bundles[backend]) {
+                "Backend does not use a local model bundle"
+            }
             if (ModelInstallVerifier.isInstalled(filesDir, bundle)) {
                 setState(backend, ModelInstallState.Ready)
                 return@withLock

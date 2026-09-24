@@ -8,6 +8,6 @@ class TranscriptApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        container = AppContainer(filesDir)
+        container = AppContainer(this, filesDir)
     }
 }
