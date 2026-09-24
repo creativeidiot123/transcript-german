@@ -3,24 +3,25 @@
 ## Product
 
 **German + English Live Captions** is an Android MVP that turns nearby spoken German into paired
-German and English captions. The user selects one of three German ASR backends:
+German and English captions. The user selects one of four German ASR backends:
 
 - Primeline Parakeet: on-device, VAD-segmented offline ASR.
 - Nemotron 3.5: on-device streaming ASR.
+- Canary 180M Flash: on-device, VAD-segmented offline multilingual ASR forced to German.
 - Gemini 3.5 Transcribe Live: cloud streaming ASR over the Gemini Live API.
 
-All three feed one shared on-device Bergamot de-en-base INT8 German-to-English translation stage.
-Primeline and Nemotron keep microphone audio on-device. Gemini is an explicit cloud choice and
-streams microphone audio to Google for transcription.
+All four feed one shared on-device Bergamot de-en-base INT8 German-to-English translation stage.
+Primeline, Nemotron, and Canary keep microphone audio on-device. Gemini is an explicit cloud choice
+and streams microphone audio to Google for transcription.
 
 ### Required journeys
 
-1. **Choose backend:** while idle, the user can select Primeline, Nemotron 3.5, or Gemini 3.5
-   Transcribe Live. Primeline is the default after process start. The picker is locked while any
-   model download or caption session is active.
-2. **Prepare selected backend:** Primeline/Nemotron require their pinned local ASR bundle. Gemini
-   instead requires a user-provided Gemini API key saved in the app. Bergamot is required for all
-   three backends. A failed/partial local model install is never reported ready.
+1. **Choose backend:** while idle, the user can select Primeline, Nemotron 3.5, Canary 180M Flash,
+   or Gemini 3.5 Transcribe Live. Primeline is the default after process start. The picker is locked
+   while any model download or caption session is active.
+2. **Prepare selected backend:** Primeline/Nemotron/Canary require their pinned local ASR bundle.
+   Gemini instead requires a user-provided Gemini API key saved in the app. Bergamot is required for
+   all four backends. A failed/partial local model install is never reported ready.
 3. **Manage Gemini credential:** while idle, the user can save, replace, or remove the Gemini API
    key. The key is encrypted using an Android Keystore AES-GCM key and persisted in app-private
    SharedPreferences across app restarts. The plaintext key is never exposed through UI state,
@@ -28,11 +29,11 @@ streams microphone audio to Google for transcription.
 4. **Start captions:** Start is available only when the selected recognition backend is ready and
    Bergamot is ready. Microphone permission is requested only at this point. The selected backend
    is passed explicitly to the foreground service and remains fixed for the session.
-5. **Caption + translate speech:** 16 kHz mono audio is kept in memory. Primeline emits finalized
-   VAD utterances. Nemotron exposes replaceable German partials and endpoint finals. Gemini streams
-   raw 16-bit PCM to the Gemini Live API with a de-DE language hint and receives interim/final
-   German transcripts. All finals and available live partials feed the shared Bergamot translation
-   stage.
+5. **Caption + translate speech:** 16 kHz mono audio is kept in memory. Primeline and Canary emit
+   finalized VAD utterances. Nemotron exposes replaceable German partials and endpoint finals.
+   Gemini streams raw 16-bit PCM to the Gemini Live API with a de-DE language hint and receives
+   interim/final German transcripts. All finals and available live partials feed the shared
+   Bergamot translation stage.
 6. **Stop captions:** app and notification Stop actions are idempotent. Accepted audio drains on a
    user stop, the selected recognizer flushes/finalizes, queued finalized translations drain,
    native/network resources are released, and the foreground service ends.
@@ -41,7 +42,7 @@ streams microphone audio to Google for transcription.
 
 ### Observable behavior
 
-- Selected Primeline/Nemotron model missing: Start is disabled and Download is available.
+- Selected Primeline/Nemotron/Canary model missing: Start is disabled and Download is available.
 - Gemini key missing: Start is disabled and the key-entry UI is available.
 - Bergamot model missing: Start is disabled and its separate Download action is available.
 - Downloading: progress is visible when the server exposes total bytes.
@@ -55,6 +56,8 @@ streams microphone audio to Google for transcription.
   finalized source.
 - Nemotron speech: current German partial text updates in place; English partial text follows only
   the newest German hypothesis.
+- Canary speech: finalized German appears after a VAD endpoint with punctuation enabled; English
+  follows from the same finalized source.
 - Gemini speech: interim German text updates from Gemini Live; finalized Gemini input transcription
   becomes one final German caption and then receives local Bergamot English translation.
 - Gemini connection/auth/session failure stops visibly rather than silently switching backends or
@@ -108,7 +111,7 @@ streams microphone audio to Google for transcription.
 
 ### Data lifecycle and privacy
 
-- Primeline/Nemotron microphone audio: memory only, never persisted, uploaded, or logged.
+- Primeline/Nemotron/Canary microphone audio: memory only, never persisted, uploaded, or logged.
 - Gemini microphone audio: memory only locally, but streamed over TLS to Google while Gemini is the
   selected active backend.
 - Gemini API key: user-provided; encrypted at rest with an Android Keystore AES-GCM key, persisted
@@ -134,8 +137,9 @@ streams microphone audio to Google for transcription.
 
 - Primeline download is approximately 671 MB.
 - Nemotron 3.5 560-ms INT8 download is approximately 682 MB.
+- Canary 180M Flash INT8 download is approximately 208 MB.
 - Bergamot de-en-base is a separately downloaded quantized student-model archive.
-- CPU inference uses four ASR threads. Primeline additionally uses one Silero VAD thread.
+- CPU inference uses four ASR threads. Primeline and Canary additionally use one Silero VAD thread.
 - Bergamot translation is serialized through one model worker.
 - Gemini latency and availability depend on network/API conditions. Gemini 3.5 Transcribe Live
   supports continuous Live transcription sessions for up to 10 minutes; a closed/expired session
@@ -154,6 +158,11 @@ streams microphone audio to Google for transcription.
 - Nemotron sherpa-onnx 560-ms INT8 export revision:
   ab43d895f5985b1bbab8b6eac8607fcdc05343f3.
 - Nemotron recognizer: sherpa-onnx OnlineRecognizer, greedy_search, per-stream language=de.
+- Canary base model: nvidia/canary-180m-flash.
+- Canary sherpa-onnx INT8 export revision:
+  b3fd7d9883a92f767be20b3792b9d54883a2f18f.
+- Canary recognizer: sherpa-onnx OfflineRecognizer with srcLang=de, tgtLang=de, punctuation enabled,
+  and model-defined feature/normalization metadata.
 - Gemini model: gemini-3.5-transcribe-live through the Gemini Live v1beta BidiGenerateContent
   WebSocket endpoint, response modality TEXT, input transcription language code de-DE.
 - Gemini audio contract: raw mono signed 16-bit little-endian PCM at 16 kHz, sent in the existing
@@ -189,7 +198,7 @@ background auto-start, automatic backend benchmarking, or automatic cloud/local 
 - Starting microphone capture without runtime microphone permission.
 - Treating a partial/corrupt local ASR or Bergamot model as installed.
 - Switching recognizer implementation inside an active session.
-- Uploading microphone audio when Primeline or Nemotron is selected.
+- Uploading microphone audio when Primeline, Nemotron, or Canary is selected.
 - Persisting or logging a plaintext Gemini API key, exposing it through UI state, committing it to
   source/build config, or backing it up.
 - Attaching an English partial translated from an older German hypothesis to newer German text.
@@ -211,8 +220,8 @@ background auto-start, automatic backend benchmarking, or automatic cloud/local 
 | Happy-path E2E | MockWebServer test covers Gemini WebSocket setup, API-key query wiring, audio send, interim callback, final callback, and explicit finish. Real Google + microphone remains **UNVERIFIED** until an Android device uses a valid user key. |
 | Persistence/process death | Local model markers are automated. Gemini key encryption/persistence uses real Android Keystore + SharedPreferences and remains **UNVERIFIED** until device/instrumentation execution. |
 | Failure/recovery | Missing/stale/invalid model installs are covered. Gemini setup/transport failure is structurally terminal; real auth/quota/network recovery remains **UNVERIFIED** against Google. |
-| Cross-feature | Selected ASR + shared translator readiness gate Start; all three ASR paths feed one translation/session owner. |
+| Cross-feature | Selected ASR + shared translator readiness gate Start; all four ASR paths feed one translation/session owner. |
 | Concurrency/duplicates | Shared model-download mutex, service first-wins, Gemini credential mutation/start gating, bounded audio/final translation queues, conflated partial translation, and one Gemini socket per session are structurally enforced/tested where platform-free. |
 | UI behavior | Compile/lint cover picker/key wiring; real secure-key entry, TalkBack, IME, and large-font behavior remain **UNVERIFIED** until instrumentation/device checks. |
 | Lifecycle/reboot | **UNVERIFIED** until service/microphone/native ASR/Bergamot/Gemini lifecycles are exercised on Android hardware/emulator. |
-| Regression | Primeline and Nemotron retain their existing recognizer/model paths; Gemini adds a third substitution branch without changing local model assets. |
+| Regression | Primeline, Nemotron, and Gemini retain their existing recognizer/model paths; Canary adds a fourth substitution branch without changing their assets or behavior. |
