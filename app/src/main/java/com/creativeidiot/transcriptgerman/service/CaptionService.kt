@@ -20,6 +20,7 @@ import com.creativeidiot.transcriptgerman.TranscriptApplication
 import com.creativeidiot.transcriptgerman.asr.CanaryRecognizer
 import com.creativeidiot.transcriptgerman.asr.CaptionRecognizer
 import com.creativeidiot.transcriptgerman.asr.GeminiLiveConnectionException
+import com.creativeidiot.transcriptgerman.asr.GeminiLiveConnectionFailure
 import com.creativeidiot.transcriptgerman.asr.GeminiLiveRecognizer
 import com.creativeidiot.transcriptgerman.asr.NemotronRecognizer
 import com.creativeidiot.transcriptgerman.asr.ParakeetRecognizer
@@ -236,9 +237,21 @@ class CaptionService : Service() {
                         }
                     },
                 )
-            } catch (_: GeminiLiveConnectionException) {
-                Log.e(TAG, "Gemini live transcription connection failed")
-                failSession(CaptionFailure.GEMINI_CONNECTION)
+            } catch (failure: GeminiLiveConnectionException) {
+                Log.e(
+                    TAG,
+                    "Gemini live transcription setup failed: reason=" +
+                        failure.failure.name +
+                        ", httpStatus=" +
+                        (failure.httpStatusCode?.toString() ?: "none"),
+                )
+                failSession(
+                    if (failure.failure == GeminiLiveConnectionFailure.AUTHENTICATION) {
+                        CaptionFailure.GEMINI_AUTHENTICATION
+                    } else {
+                        CaptionFailure.GEMINI_CONNECTION
+                    },
+                )
                 return
             } catch (failure: RuntimeException) {
                 Log.e(
