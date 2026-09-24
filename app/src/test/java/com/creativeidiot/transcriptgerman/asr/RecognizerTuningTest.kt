@@ -23,6 +23,11 @@ class RecognizerTuningTest {
     }
 
     @Test
+    fun nemotronBlankPenalty_usesMeasuredCorpusSetting() {
+        assertEquals(1.0f, NEMOTRON_BLANK_PENALTY, 0.0f)
+    }
+
+    @Test
     fun nemotronFinishPadding_matchesSherpaStreamingFlush() {
         val padding = nemotronFinalPadding(16_000)
 

@@ -40,6 +40,7 @@ internal class NemotronRecognizer(
                 endpointConfig = nemotronEndpointConfig(),
                 enableEndpoint = true,
                 decodingMethod = "greedy_search",
+                blankPenalty = NEMOTRON_BLANK_PENALTY,
             ),
         )
         var createdStream: OnlineStream? = null

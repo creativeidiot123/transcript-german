@@ -14,3 +14,5 @@ enum class AsrBackend(
             entries.firstOrNull { it.wireValue == value }
     }
 }
+
+internal val DEFAULT_ASR_BACKEND = AsrBackend.NEMOTRON

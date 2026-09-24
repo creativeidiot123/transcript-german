@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.creativeidiot.transcriptgerman.AppContainer
 import com.creativeidiot.transcriptgerman.gemini.GeminiApiKeyStore
 import com.creativeidiot.transcriptgerman.model.AsrBackend
+import com.creativeidiot.transcriptgerman.model.DEFAULT_ASR_BACKEND
 import com.creativeidiot.transcriptgerman.model.ModelInstallState
 import com.creativeidiot.transcriptgerman.model.ModelRepository
 import com.creativeidiot.transcriptgerman.session.CaptionSessionState
@@ -47,7 +48,7 @@ class CaptionViewModel(
     private val sessionStore: CaptionSessionStore,
 ) : ViewModel() {
     private val selectedBackend = MutableStateFlow(
-        sessionStore.state.value.activeBackend ?: AsrBackend.PRIMELINE,
+        sessionStore.state.value.activeBackend ?: DEFAULT_ASR_BACKEND,
     )
     private val microphonePermissionDenied = MutableStateFlow(false)
     private val geminiApiKeyStorageError = MutableStateFlow(false)

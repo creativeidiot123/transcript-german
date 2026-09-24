@@ -20,6 +20,7 @@ internal fun localConversationVadConfig(modelPath: String): VadModelConfig =
         provider = "cpu",
     )
 
+internal const val NEMOTRON_BLANK_PENALTY = 1.0f
 private const val NEMOTRON_FINAL_PADDING_MILLIS = 300
 
 internal fun nemotronFinalPadding(sampleRate: Int): FloatArray {
