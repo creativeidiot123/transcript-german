@@ -147,6 +147,10 @@ private fun GeminiCredentialStatus(
             text = stringResource(R.string.gemini_api_key_storage_note),
             style = MaterialTheme.typography.bodySmall,
         )
+        Text(
+            text = stringResource(R.string.gemini_api_key_auth_note),
+            style = MaterialTheme.typography.bodySmall,
+        )
         if (storageError) {
             Text(
                 text = stringResource(R.string.gemini_api_key_storage_failed),
