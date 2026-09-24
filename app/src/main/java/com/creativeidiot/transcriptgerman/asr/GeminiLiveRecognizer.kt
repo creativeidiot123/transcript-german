@@ -180,8 +180,12 @@ internal class GeminiLiveRecognizer private constructor(
                     response: Response?,
                 ) {
                     if (!setup.isCompleted) {
+                        val responseCode = response?.code
                         val reason =
-                            if (response?.code in AUTHENTICATION_HTTP_CODES) {
+                            if (
+                                responseCode != null &&
+                                responseCode in AUTHENTICATION_HTTP_CODES
+                            ) {
                                 GeminiLiveConnectionException.Reason.AUTHENTICATION
                             } else {
                                 GeminiLiveConnectionException.Reason.CONNECTION
