@@ -15,7 +15,6 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class GeminiLiveRecognizerTest {
@@ -120,24 +119,63 @@ class GeminiLiveRecognizerTest {
         server.start()
 
         try {
-            val failure = assertThrows(GeminiLiveConnectionException::class.java) {
-                runBlocking {
-                    withContext(Dispatchers.IO) {
-                        GeminiLiveRecognizer.connect(
-                            client = client,
-                            apiKey = "AQ.rejected-auth-key",
-                            onPartial = {},
-                            onFinal = {},
-                            onFailure = {},
-                            endpoint = server.url("/live"),
-                        )
-                    }
+            val failure = try {
+                withContext(Dispatchers.IO) {
+                    GeminiLiveRecognizer.connect(
+                        client = client,
+                        apiKey = "AQ.rejected-auth-key",
+                        onPartial = {},
+                        onFinal = {},
+                        onFailure = {},
+                        endpoint = server.url("/live"),
+                    )
                 }
+                null
+            } catch (caught: GeminiLiveConnectionException) {
+                caught
             }
 
+            assertNotNull(failure)
             assertEquals(
                 GeminiLiveConnectionException.Reason.AUTHENTICATION,
-                failure.reason,
+                failure?.reason,
+            )
+        } finally {
+            server.shutdown()
+            client.connectionPool.evictAll()
+            client.dispatcher.executorService.shutdown()
+        }
+    }
+
+    @Test
+    fun serviceUnavailable_isClassifiedAsConnectionFailure() = runBlocking {
+        val server = MockWebServer()
+        val client = OkHttpClient()
+
+        server.enqueue(MockResponse().setResponseCode(503))
+        server.start()
+
+        try {
+            val failure = try {
+                withContext(Dispatchers.IO) {
+                    GeminiLiveRecognizer.connect(
+                        client = client,
+                        apiKey = "AQ.test-auth-key",
+                        onPartial = {},
+                        onFinal = {},
+                        onFailure = {},
+                        endpoint = server.url("/live"),
+                    )
+                }
+                null
+            } catch (caught: GeminiLiveConnectionException) {
+                caught
+            }
+
+            assertNotNull(failure)
+            assertEquals(
+                GeminiLiveConnectionException.Reason.CONNECTION,
+                failure?.reason,
             )
         } finally {
             server.shutdown()
