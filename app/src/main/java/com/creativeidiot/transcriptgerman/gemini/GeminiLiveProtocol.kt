@@ -4,6 +4,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.Base64
 import kotlin.math.roundToInt
+import org.json.JSONArray
 import org.json.JSONObject
 
 internal data class GeminiLiveEvent(
@@ -28,14 +29,14 @@ internal object GeminiLiveProtocol {
                         "generationConfig",
                         JSONObject().put(
                             "responseModalities",
-                            listOf("TEXT"),
+                            JSONArray().put("TEXT"),
                         ),
                     )
                     .put(
                         "inputAudioTranscription",
                         JSONObject().put(
                             "languageCodes",
-                            listOf("de-DE"),
+                            JSONArray().put("de-DE"),
                         ),
                     ),
             )
@@ -85,12 +86,22 @@ internal object GeminiLiveProtocol {
             setupComplete = root.has("setupComplete"),
             interimText = serverContent
                 ?.optJSONObject("interimInputTranscription")
-                ?.optString("text")
-                ?.takeIf { it.isNotEmpty() },
+                ?.let { transcription ->
+                    if (transcription.has("text")) {
+                        transcription.optString("text")
+                    } else {
+                        null
+                    }
+                },
             finalText = serverContent
                 ?.optJSONObject("inputTranscription")
-                ?.optString("text")
-                ?.takeIf { it.isNotEmpty() },
+                ?.let { transcription ->
+                    if (transcription.has("text")) {
+                        transcription.optString("text")
+                    } else {
+                        null
+                    }
+                },
         )
     }
 }
