@@ -37,6 +37,7 @@ internal class NemotronRecognizer(
                     numThreads = 4,
                     provider = "cpu",
                 ),
+                endpointConfig = nemotronEndpointConfig(),
                 enableEndpoint = true,
                 decodingMethod = "greedy_search",
             ),
