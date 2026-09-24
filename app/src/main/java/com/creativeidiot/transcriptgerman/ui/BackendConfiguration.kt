@@ -53,7 +53,8 @@ internal fun BackendConfiguration(
         GeminiCredentialStatus(
             configured = state.geminiApiKeyConfigured,
             storageError = state.geminiApiKeyStorageError,
-            enabled = state.session.status == CaptionSessionStatus.IDLE,
+            enabled = state.session.status == CaptionSessionStatus.IDLE &&
+                !state.geminiApiKeyMutationInProgress,
             onSave = onSaveGeminiApiKey,
             onClear = onClearGeminiApiKey,
         )
