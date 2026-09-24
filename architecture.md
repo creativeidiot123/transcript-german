@@ -21,6 +21,7 @@
     AudioRecord resource            AudioCapture
     Primeline native resources      ParakeetRecognizer
     Nemotron native resources       NemotronRecognizer
+    Canary native resources         CanaryRecognizer
     Permission launcher             MainActivity
     Dependency construction         TranscriptApplication -> AppContainer
     Navigation                      Single Activity; no navigation graph
@@ -47,12 +48,12 @@ transcript store, or durable backend-selection store.
                                                         |
                                                bounded FloatArray queue
                                                         |
-                   +-------------------+----------------+-------------------+
-                   |                   |                                    |
-           ParakeetRecognizer   NemotronRecognizer                  GeminiLiveRecognizer
-           VAD + offline ASR    streaming local ASR                 WSS to Gemini Live
-                   |                   |                         de-DE interim/final German
-                   +-------------------+----------------+-------------------+
+             +----------------+----------------+----------------+----------------+
+             |                |                |                                 |
+     ParakeetRecognizer NemotronRecognizer CanaryRecognizer             GeminiLiveRecognizer
+     VAD + offline ASR  streaming local ASR VAD + offline ASR           WSS to Gemini Live
+             |                |                |                    de-DE interim/final German
+             +----------------+----------------+----------------+----------------+
                                                         |
                                              CaptionTranslationPipeline
                                              latest partial / ordered finals
@@ -82,7 +83,7 @@ an explicit Intent extra after microphone permission succeeds. CaptionService re
 once and records it in CaptionSessionStore. A recreated Activity therefore renders the backend
 actually in use.
 
-Primeline and Nemotron resolve through ModelRepository. Gemini bypasses local ASR model installation
+Primeline, Nemotron, and Canary resolve through ModelRepository. Gemini bypasses local ASR model installation
 and resolves its credential from GeminiApiKeyStore only when CaptionService starts a Gemini session.
 
 ## Gemini credential persistence
@@ -109,11 +110,12 @@ plaintext.
 ## Model installation
 
 AppContainer owns one download Mutex shared by ModelRepository and BergamotModelRepository.
-ModelRepository has immutable bundle specs/directories only for Primeline and Nemotron; Gemini has
-no local ASR ModelBundleSpec and therefore cannot accidentally be reported installed by local files.
+ModelRepository has immutable bundle specs/directories for Primeline, Nemotron, and Canary; Gemini
+has no local ASR ModelBundleSpec and therefore cannot accidentally be reported installed by local
+files.
 
 BergamotModelRepository downloads/verifies/extracts the de-en-base bundle independently because all
-three recognition backends consume the same German-to-English translator.
+four recognition backends consume the same German-to-English translator.
 
 ## Caption session lifecycle
 
@@ -141,6 +143,18 @@ committed to CaptionSessionStore and submitted to the shared translation pipelin
 
 NemotronRecognizer retains one OnlineRecognizer/OnlineStream, forces language=de, and publishes
 replaceable German partials plus endpoint finals.
+
+### Canary 180M Flash
+
+CanaryRecognizer mirrors the existing local VAD-segmented ownership shape without sharing mutable
+native state with Primeline. It owns one Silero VAD instance and one sherpa-onnx OfflineRecognizer
+configured with source and target language both set to German and punctuation enabled. sherpa-onnx
+1.13.8 reads Canary's feature dimension and NeMo normalization settings from the pinned ONNX model
+metadata, so the app does not duplicate those model-specific values.
+
+Each completed VAD segment is decoded synchronously on the service session worker and emits one final
+German caption into the same translation path as Primeline. Canary exposes no live ASR partials.
+On Stop, VAD is flushed before the recognizer and translator are released.
 
 ### Gemini 3.5 Transcribe Live
 
@@ -209,7 +223,7 @@ names, and local model metadata.
 
 ## Persistence impact
 
-There is no Room/DataStore schema migration. This change adds an app-private Gemini credential
-SharedPreferences file containing only AES-GCM ciphertext/IV and an Android Keystore AES key alias.
-Existing Primeline, Nemotron, and Bergamot installs remain valid and untouched. Removing app data
-removes local models and the encrypted credential. App backup remains disabled.
+There is no Room/DataStore schema migration. Canary adds one independent app-private model directory;
+the existing encrypted Gemini credential storage is unchanged. Existing Primeline, Nemotron, and
+Bergamot installs remain valid and untouched. Removing app data removes local models and the
+encrypted credential. App backup remains disabled.
