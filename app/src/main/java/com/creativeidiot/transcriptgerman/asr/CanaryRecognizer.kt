@@ -5,9 +5,7 @@ import com.k2fsa.sherpa.onnx.OfflineCanaryModelConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
-import com.k2fsa.sherpa.onnx.SileroVadModelConfig
 import com.k2fsa.sherpa.onnx.Vad
-import com.k2fsa.sherpa.onnx.VadModelConfig
 import java.io.File
 
 internal class CanaryRecognizer(
@@ -21,17 +19,8 @@ internal class CanaryRecognizer(
 
     init {
         val createdVad = Vad(
-            config = VadModelConfig(
-                sileroVadModelConfig = SileroVadModelConfig(
-                    model = File(modelDirectory, "silero_vad.onnx").absolutePath,
-                    threshold = 0.5f,
-                    minSilenceDuration = 0.3f,
-                    minSpeechDuration = 0.2f,
-                    windowSize = 512,
-                ),
-                sampleRate = SAMPLE_RATE,
-                numThreads = 1,
-                provider = "cpu",
+            config = localConversationVadConfig(
+                modelPath = File(modelDirectory, "silero_vad.onnx").absolutePath,
             ),
         )
         vad = createdVad
