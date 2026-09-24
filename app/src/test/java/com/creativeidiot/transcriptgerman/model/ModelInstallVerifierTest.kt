@@ -60,6 +60,7 @@ class ModelInstallVerifierTest {
             listOf(
                 PrimelineModelSpec.bundle,
                 NemotronModelSpec.bundle,
+                CanaryModelSpec.bundle,
             ).all { productionBundle ->
                 productionBundle.files
                     .filter { it.name.endsWith(".onnx") || it.name.endsWith(".onnx.data") }
