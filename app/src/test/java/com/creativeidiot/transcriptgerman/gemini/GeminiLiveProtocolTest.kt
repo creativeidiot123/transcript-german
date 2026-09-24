@@ -25,11 +25,17 @@ class GeminiLiveProtocolTest {
                 .getJSONArray("responseModalities")
                 .getString(0),
         )
+        val transcription = setup.getJSONObject("inputAudioTranscription")
         assertEquals(
             "de-DE",
-            setup.getJSONObject("inputAudioTranscription")
-                .getJSONArray("languageCodes")
-                .getString(0),
+            transcription.getJSONArray("languageCodes").getString(0),
+        )
+        assertEquals("VERBATIM", transcription.getString("mode"))
+        assertEquals(
+            800,
+            setup.getJSONObject("realtimeInputConfig")
+                .getJSONObject("automaticActivityDetection")
+                .getInt("silenceDurationMs"),
         )
     }
 
