@@ -434,64 +434,6 @@ def write_csv(path: Path, rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
-def fmt_percent(value: float) -> str:
-    return f"{value * 100.0:.2f}%"
-
-
-def write_report(path: Path, summaries: list[dict]) -> None:
-    lines = [
-        "# Nemotron German corpus benchmark",
-        "",
-        "FLEURS de_de test corpus, exact app-pinned 560 ms INT8 model, forced language=de.",
-        "Attenuation is followed by PCM16 re-quantization to simulate a quieter captured signal.",
-        "",
-        "## Attenuation stress",
-        "",
-        "| setting | WER | CER | median RTF | p95 decode step | median first partial audio | p95 final extra silence | empty |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-    ]
-    for row in summaries:
-        if row["family"] != "attenuation":
-            continue
-        lines.append(
-            f"| {row['attenuation_db']} dB down | {fmt_percent(row['wer'])} | "
-            f"{fmt_percent(row['cer'])} | {row['median_rtf']:.3f} | "
-            f"{row['p95_decode_step_ms']:.1f} ms | "
-            f"{row['median_first_partial_audio_ms'] or 0:.0f} ms | "
-            f"{row['p95_finalization_extra_ms'] or 0:.0f} ms | "
-            f"{row['empty_hypotheses']} |"
-        )
-
-    for family, title in (
-        ("endpoint", "Endpoint sweep"),
-        ("feed_chunk", "Feed chunk sweep"),
-        ("threads", "Thread sweep"),
-        ("blank_penalty", "Blank-penalty sweep"),
-    ):
-        lines.extend(
-            [
-                "",
-                f"## {title}",
-                "",
-                "| setting | attenuation | WER | deletions | insertions | median RTF | p95 decode step | median first partial audio | p95 final extra silence |",
-                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-            ],
-        )
-        for row in summaries:
-            if row["family"] != family:
-                continue
-            lines.append(
-                f"| {row['label']} | {row['attenuation_db']} dB | "
-                f"{fmt_percent(row['wer'])} | {row['deletions']} | "
-                f"{row['insertions']} | {row['median_rtf']:.3f} | "
-                f"{row['p95_decode_step_ms']:.1f} ms | "
-                f"{row['median_first_partial_audio_ms'] or 0:.0f} ms | "
-                f"{row['p95_finalization_extra_ms'] or 0:.0f} ms |"
-            )
-
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", type=Path, required=True)
@@ -530,7 +472,6 @@ def main() -> None:
         json.dumps(summaries, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-    write_report(args.output_dir / "report.md", summaries)
 
     environment = {
         "seed": SEED,

@@ -69,13 +69,6 @@ jobs:
           --accuracy-count 64
           --sweep-count 12
 
-      - name: Print benchmark report
-        if: always()
-        run: |
-          if [ -f benchmark-results/report.md ]; then
-            cat benchmark-results/report.md
-          fi
-
       - name: Upload benchmark results
         if: always()
         uses: actions/upload-artifact@v4
