@@ -68,9 +68,14 @@ class ModelInstallVerifierTest {
     @Test
     fun backendCatalog_usesIndependentInstallDirectories() {
         assertNotEquals(
-            ModelCatalog.bundleFor(AsrBackend.PRIMELINE).directoryName,
-            ModelCatalog.bundleFor(AsrBackend.NEMOTRON).directoryName,
+            requireNotNull(ModelCatalog.bundleFor(AsrBackend.PRIMELINE)).directoryName,
+            requireNotNull(ModelCatalog.bundleFor(AsrBackend.NEMOTRON)).directoryName,
         )
+    }
+
+    @Test
+    fun cloudBackend_hasNoLocalModelBundle() {
+        assertTrue(ModelCatalog.bundleFor(AsrBackend.GEMINI) == null)
     }
 
     @Test
