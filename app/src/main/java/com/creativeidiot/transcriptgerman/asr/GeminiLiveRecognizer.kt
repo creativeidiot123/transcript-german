@@ -16,7 +16,14 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 
-internal class GeminiLiveConnectionException : IOException()
+internal class GeminiLiveConnectionException(
+    val reason: Reason = Reason.CONNECTION,
+) : IOException() {
+    enum class Reason {
+        CONNECTION,
+        AUTHENTICATION,
+    }
+}
 
 internal class GeminiLiveRecognizer private constructor(
     private val webSocket: WebSocket,
@@ -173,7 +180,15 @@ internal class GeminiLiveRecognizer private constructor(
                     response: Response?,
                 ) {
                     if (!setup.isCompleted) {
-                        setup.completeExceptionally(GeminiLiveConnectionException())
+                        val reason =
+                            if (response?.code in AUTHENTICATION_HTTP_CODES) {
+                                GeminiLiveConnectionException.Reason.AUTHENTICATION
+                            } else {
+                                GeminiLiveConnectionException.Reason.CONNECTION
+                            }
+                        setup.completeExceptionally(
+                            GeminiLiveConnectionException(reason),
+                        )
                     } else {
                         recognizerRef.get()?.signalFailure()
                     }
@@ -226,5 +241,6 @@ internal class GeminiLiveRecognizer private constructor(
         private const val QUIET_FINALIZATION_GRACE_MILLIS = 2_000L
         private const val MAX_WEB_SOCKET_QUEUE_BYTES = 256L * 1024L
         private const val NORMAL_CLOSE_CODE = 1000
+        private val AUTHENTICATION_HTTP_CODES = setOf(400, 401, 403)
     }
 }
