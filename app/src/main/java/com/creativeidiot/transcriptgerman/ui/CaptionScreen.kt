@@ -262,7 +262,10 @@ private fun Controls(
     val running = state.session.status != CaptionSessionStatus.IDLE
     val recognitionReady =
         if (state.selectedBackend == AsrBackend.GEMINI) {
-            state.geminiApiKeyConfigured
+            isGeminiStartAllowed(
+                configured = state.geminiApiKeyConfigured,
+                mutationInProgress = state.geminiApiKeyMutationInProgress,
+            )
         } else {
             state.model == ModelInstallState.Ready
         }
