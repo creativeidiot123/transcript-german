@@ -83,7 +83,7 @@ internal class ParakeetRecognizer(
         }
     }
 
-    override fun finish() {
+    override suspend fun finish() {
         if (closed) return
 
         vad.flush()
