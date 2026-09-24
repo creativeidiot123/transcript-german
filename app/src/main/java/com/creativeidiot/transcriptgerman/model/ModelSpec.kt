@@ -19,10 +19,11 @@ internal data class ModelBundleSpec(
 }
 
 internal object ModelCatalog {
-    fun bundleFor(backend: AsrBackend): ModelBundleSpec =
+    fun bundleFor(backend: AsrBackend): ModelBundleSpec? =
         when (backend) {
             AsrBackend.PRIMELINE -> PrimelineModelSpec.bundle
             AsrBackend.NEMOTRON -> NemotronModelSpec.bundle
+            AsrBackend.GEMINI -> null
         }
 }
 
