@@ -8,6 +8,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -110,12 +111,12 @@ internal class GeminiLiveRecognizer private constructor(
             onPartial: (String) -> Unit,
             onFinal: (String) -> Unit,
             onFailure: () -> Unit,
+            endpoint: HttpUrl = GeminiLiveProtocol.ENDPOINT.toHttpUrl(),
         ): GeminiLiveRecognizer {
             val setup = CompletableDeferred<Unit>()
             val recognizerRef = AtomicReference<GeminiLiveRecognizer?>()
 
-            val url = GeminiLiveProtocol.ENDPOINT
-                .toHttpUrl()
+            val url = endpoint
                 .newBuilder()
                 .addQueryParameter("key", apiKey)
                 .build()
