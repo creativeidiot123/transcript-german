@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.creativeidiot.transcriptgerman.AppContainer
+import com.creativeidiot.transcriptgerman.gemini.GeminiApiKeyStore
 import com.creativeidiot.transcriptgerman.model.AsrBackend
 import com.creativeidiot.transcriptgerman.model.ModelInstallState
 import com.creativeidiot.transcriptgerman.model.ModelRepository
@@ -11,6 +12,7 @@ import com.creativeidiot.transcriptgerman.session.CaptionSessionState
 import com.creativeidiot.transcriptgerman.session.CaptionSessionStatus
 import com.creativeidiot.transcriptgerman.session.CaptionSessionStore
 import com.creativeidiot.transcriptgerman.translation.BergamotModelRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,40 +23,65 @@ import kotlinx.coroutines.launch
 
 data class CaptionUiState(
     val selectedBackend: AsrBackend,
-    val model: ModelInstallState,
+    val model: ModelInstallState?,
     val translationModel: ModelInstallState,
     val isAnyModelDownloading: Boolean,
+    val geminiApiKeyConfigured: Boolean,
+    val geminiApiKeyStorageError: Boolean,
     val session: CaptionSessionState,
     val microphonePermissionDenied: Boolean,
+)
+
+private data class ModelReadiness(
+    val modelStates: Map<AsrBackend, ModelInstallState>,
+    val translationModel: ModelInstallState,
+    val geminiApiKeyConfigured: Boolean,
 )
 
 class CaptionViewModel(
     private val modelRepository: ModelRepository,
     private val bergamotModelRepository: BergamotModelRepository,
+    private val geminiApiKeyStore: GeminiApiKeyStore,
     private val sessionStore: CaptionSessionStore,
 ) : ViewModel() {
     private val selectedBackend = MutableStateFlow(
         sessionStore.state.value.activeBackend ?: AsrBackend.PRIMELINE,
     )
     private val microphonePermissionDenied = MutableStateFlow(false)
+    private val geminiApiKeyStorageError = MutableStateFlow(false)
     private var pendingStartBackend: AsrBackend? = null
     private var downloadJob: Job? = null
+    private var geminiKeyJob: Job? = null
 
-    val state: StateFlow<CaptionUiState> = combine(
+    private val modelReadiness = combine(
         modelRepository.states,
         bergamotModelRepository.state,
+        geminiApiKeyStore.isConfigured,
+    ) { modelStates, translationModel, geminiApiKeyConfigured ->
+        ModelReadiness(
+            modelStates = modelStates,
+            translationModel = translationModel,
+            geminiApiKeyConfigured = geminiApiKeyConfigured,
+        )
+    }
+
+    val state: StateFlow<CaptionUiState> = combine(
+        modelReadiness,
         sessionStore.state,
         selectedBackend,
         microphonePermissionDenied,
-    ) { modelStates, translationModel, session, selected, permissionDenied ->
+        geminiApiKeyStorageError,
+    ) { readiness, session, selected, permissionDenied, keyStorageError ->
         val effectiveBackend = session.activeBackend ?: selected
         CaptionUiState(
             selectedBackend = effectiveBackend,
-            model = modelStates.getValue(effectiveBackend),
-            translationModel = translationModel,
+            model = readiness.modelStates[effectiveBackend],
+            translationModel = readiness.translationModel,
             isAnyModelDownloading =
-                modelStates.values.any { it is ModelInstallState.Downloading } ||
-                    translationModel is ModelInstallState.Downloading,
+                readiness.modelStates.values.any { it is ModelInstallState.Downloading } ||
+                    readiness.translationModel is ModelInstallState.Downloading,
+            geminiApiKeyConfigured = readiness.geminiApiKeyConfigured,
+            geminiApiKeyStorageError = keyStorageError,
             session = session,
             microphonePermissionDenied = permissionDenied,
         )
@@ -68,12 +95,15 @@ class CaptionViewModel(
         if (sessionStore.state.value.status != CaptionSessionStatus.IDLE) return
         if (isAnyModelDownloading()) return
         selectedBackend.value = backend
+        geminiApiKeyStorageError.value = false
     }
 
     fun downloadModel() {
         if (downloadJob?.isActive == true) return
 
         val backend = selectedBackend.value
+        if (!backend.requiresLocalModel) return
+
         downloadJob = viewModelScope.launch {
             modelRepository.download(backend)
         }
@@ -84,6 +114,40 @@ class CaptionViewModel(
 
         downloadJob = viewModelScope.launch {
             bergamotModelRepository.download()
+        }
+    }
+
+    fun saveGeminiApiKey(value: String) {
+        if (sessionStore.state.value.status != CaptionSessionStatus.IDLE) return
+        if (geminiKeyJob?.isActive == true) return
+        val apiKey = value.trim()
+        if (apiKey.isEmpty()) return
+
+        geminiApiKeyStorageError.value = false
+        geminiKeyJob = viewModelScope.launch {
+            try {
+                geminiApiKeyStore.saveApiKey(apiKey)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                geminiApiKeyStorageError.value = true
+            }
+        }
+    }
+
+    fun clearGeminiApiKey() {
+        if (sessionStore.state.value.status != CaptionSessionStatus.IDLE) return
+        if (geminiKeyJob?.isActive == true) return
+
+        geminiApiKeyStorageError.value = false
+        geminiKeyJob = viewModelScope.launch {
+            try {
+                geminiApiKeyStore.clearApiKey()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                geminiApiKeyStorageError.value = true
+            }
         }
     }
 
@@ -116,11 +180,13 @@ class CaptionViewModel(
         val translationModel = bergamotModelRepository.state.value
         return CaptionUiState(
             selectedBackend = backend,
-            model = modelStates.getValue(backend),
+            model = modelStates[backend],
             translationModel = translationModel,
             isAnyModelDownloading =
                 modelStates.values.any { it is ModelInstallState.Downloading } ||
                     translationModel is ModelInstallState.Downloading,
+            geminiApiKeyConfigured = geminiApiKeyStore.isConfigured.value,
+            geminiApiKeyStorageError = false,
             session = session,
             microphonePermissionDenied = false,
         )
@@ -137,6 +203,7 @@ class CaptionViewModel(
                 return CaptionViewModel(
                     modelRepository = container.modelRepository,
                     bergamotModelRepository = container.bergamotModelRepository,
+                    geminiApiKeyStore = container.geminiApiKeyStore,
                     sessionStore = container.sessionStore,
                 ) as T
             }
