@@ -27,6 +27,7 @@
     <string name="gemini_api_key_save">Save key</string>
     <string name="gemini_api_key_clear">Remove key</string>
     <string name="gemini_api_key_storage_note">The key is encrypted with Android Keystore and kept across app restarts. It is not backed up or logged.</string>
+    <string name="gemini_api_key_auth_note">Use a current Gemini authorization key created in Google AI Studio. Legacy standard keys are no longer accepted by the Gemini API.</string>
     <string name="gemini_api_key_storage_failed">The API key could not be saved securely on this device.</string>
     <string name="start_listening">Start listening</string>
     <string name="stop_listening">Stop listening</string>
@@ -53,7 +54,8 @@
     <string name="error_asr_init">The speech recognizer could not start. Re-download the selected speech model if this keeps happening.</string>
     <string name="error_translation_init">The local translation engine could not start. Re-download the Bergamot model if this keeps happening.</string>
     <string name="error_gemini_key_missing">Gemini needs an API key saved in the app before listening.</string>
-    <string name="error_gemini_connection">Gemini live transcription could not connect or the live session ended. Check the API key and network, then start again.</string>
+    <string name="error_gemini_key_rejected">Google rejected this Gemini API key or its project access. Create a current authorization key in Google AI Studio, replace the saved key, and try again.</string>
+    <string name="error_gemini_connection">Gemini live transcription could not connect or the live session ended. Check the network, then start again.</string>
     <string name="error_backpressure">Transcription could not keep up with incoming audio, so listening stopped instead of dropping speech.</string>
     <string name="error_translation">English translation stopped unexpectedly, so the caption session was stopped instead of silently showing German only.</string>
     <string name="error_unexpected">Live captions stopped because of an unexpected local error.</string>
