@@ -149,9 +149,11 @@ response modality and inputAudioTranscription.languageCodes=[de-DE]. CaptionServ
 microphone capture until setupComplete arrives.
 
 Each existing FloatArray audio chunk is converted to raw signed 16-bit little-endian PCM and sent as
-audio/pcm;rate=16000. interimInputTranscription updates the replaceable German partial.
-inputTranscription is authoritative final German text and uses the same final-caption path as the
-local recognizers.
+audio/pcm;rate=16000. Before enqueueing another message, the recognizer checks OkHttp's WebSocket
+queue and fails the session at 256 KiB rather than allowing a stalled network to accumulate a
+minutes-old audio backlog. Repeated identical interim hypotheses are suppressed before they reach
+translation. interimInputTranscription updates the replaceable German partial. inputTranscription
+is authoritative final German text and uses the same final-caption path as the local recognizers.
 
 On explicit Stop, CaptionService drains the app audio queue and Gemini sends audioStreamEnd. If a
 live interim hypothesis exists, the recognizer waits up to five seconds for the matching final
