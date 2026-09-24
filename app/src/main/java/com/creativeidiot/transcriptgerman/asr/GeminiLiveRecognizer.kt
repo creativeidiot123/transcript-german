@@ -36,6 +36,11 @@ internal class GeminiLiveRecognizer private constructor(
         check(!clientClosing.get()) { "Recognizer is closed" }
         if (!acceptingEvents.get()) return
 
+        if (webSocket.queueSize() >= MAX_WEB_SOCKET_QUEUE_BYTES) {
+            signalFailure()
+            return
+        }
+
         audioSinceLastFinal.set(true)
         if (!webSocket.send(GeminiLiveProtocol.audioMessage(samples))) {
             signalFailure()
@@ -93,8 +98,10 @@ internal class GeminiLiveRecognizer private constructor(
 
         event.interimText?.let { text ->
             val normalized = text.trim()
-            latestPartial.set(normalized)
-            onPartial(normalized)
+            val previous = latestPartial.getAndSet(normalized)
+            if (normalized != previous) {
+                onPartial(normalized)
+            }
         }
 
         event.finalText?.let { text ->
@@ -217,6 +224,7 @@ internal class GeminiLiveRecognizer private constructor(
         private const val CONNECT_TIMEOUT_MILLIS = 20_000L
         private const val FINALIZATION_TIMEOUT_MILLIS = 5_000L
         private const val QUIET_FINALIZATION_GRACE_MILLIS = 2_000L
+        private const val MAX_WEB_SOCKET_QUEUE_BYTES = 256L * 1024L
         private const val NORMAL_CLOSE_CODE = 1000
     }
 }
