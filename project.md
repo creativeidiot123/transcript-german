@@ -153,18 +153,23 @@ and streams microphone audio to Google for transcription.
 - Primeline-compatible INT8 export revision:
   d548e25b9bfe559aa274f361892dc4ed5d64743a.
 - Primeline recognizer model type: nemo_transducer, decoding: greedy_search.
-- Silero VAD asset: sherpa-onnx asr-models/silero_vad.onnx.
+- Silero VAD asset: sherpa-onnx asr-models/silero_vad.onnx. Primeline and Canary use the same
+  conversation profile: threshold 0.5, 0.4-second minimum silence, 0.2-second minimum speech, and
+  10-second maximum speech duration before sherpa-onnx raises the VAD threshold.
 - Nemotron base model: nvidia/nemotron-3.5-asr-streaming-0.6b.
 - Nemotron sherpa-onnx 560-ms INT8 export revision:
   ab43d895f5985b1bbab8b6eac8607fcdc05343f3.
 - Nemotron recognizer: sherpa-onnx OnlineRecognizer, greedy_search, per-stream language=de.
+  Endpoint detection keeps sherpa's 2.4-second no-content fallback and 20-second utterance cap while
+  finalizing decoded speech after 0.8 seconds of trailing silence.
 - Canary base model: nvidia/canary-180m-flash.
 - Canary sherpa-onnx INT8 export revision:
   b3fd7d9883a92f767be20b3792b9d54883a2f18f.
 - Canary recognizer: sherpa-onnx OfflineRecognizer with srcLang=de, tgtLang=de, punctuation enabled,
   and model-defined feature/normalization metadata.
 - Gemini model: gemini-3.5-transcribe-live through the Gemini Live v1beta BidiGenerateContent
-  WebSocket endpoint, response modality TEXT, input transcription language code de-DE.
+  WebSocket endpoint, response modality TEXT, input transcription language code de-DE, VERBATIM
+  transcription mode, and server automatic activity detection with 800 ms trailing silence.
 - Gemini audio contract: raw mono signed 16-bit little-endian PCM at 16 kHz, sent in the existing
   100-ms app audio chunks.
 - Gemini auth policy for this app: a user-provided standard API key is sent only on the TLS
@@ -215,7 +220,7 @@ background auto-start, automatic backend benchmarking, or automatic cloud/local 
 
 | Category | MVP proof |
 | --- | --- |
-| Core logic | JVM tests cover ASR manifests, cloud/local catalog separation, Gemini setup/PCM/transcript protocol, Bergamot verification, transcript pairing, and translation ordering. |
+| Core logic | JVM tests cover ASR manifests, local VAD/Nemotron endpoint tuning, cloud/local catalog separation, Gemini setup/PCM/transcript protocol, Bergamot verification, transcript pairing, and translation ordering. |
 | State transitions | JVM tests cover failure/stop/restart, partial replacement, stale-English rejection, final pairing, append, and clear transitions. |
 | Happy-path E2E | MockWebServer test covers Gemini WebSocket setup, API-key query wiring, audio send, interim callback, final callback, and explicit finish. Real Google + microphone remains **UNVERIFIED** until an Android device uses a valid user key. |
 | Persistence/process death | Local model markers are automated. Gemini key encryption/persistence uses real Android Keystore + SharedPreferences and remains **UNVERIFIED** until device/instrumentation execution. |
@@ -224,4 +229,4 @@ background auto-start, automatic backend benchmarking, or automatic cloud/local 
 | Concurrency/duplicates | Shared model-download mutex, service first-wins, Gemini credential mutation/start gating, bounded audio/final translation queues, conflated partial translation, and one Gemini socket per session are structurally enforced/tested where platform-free. |
 | UI behavior | Compile/lint cover picker/key wiring; real secure-key entry, TalkBack, IME, and large-font behavior remain **UNVERIFIED** until instrumentation/device checks. |
 | Lifecycle/reboot | **UNVERIFIED** until service/microphone/native ASR/Bergamot/Gemini lifecycles are exercised on Android hardware/emulator. |
-| Regression | Primeline, Nemotron, and Gemini retain their existing recognizer/model paths; Canary adds a fourth substitution branch without changing their assets or behavior. |
+| Regression | Primeline, Nemotron, Canary, and Gemini retain their pinned model/runtime paths; JVM tests pin the tuned local endpoint/VAD profiles and Gemini setup contract. |
