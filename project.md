@@ -172,10 +172,10 @@ and streams microphone audio to Google for transcription.
   transcription mode, and server automatic activity detection with 800 ms trailing silence.
 - Gemini audio contract: raw mono signed 16-bit little-endian PCM at 16 kHz, sent in the existing
   100-ms app audio chunks.
-- Gemini auth policy for this app: a user-provided standard API key is sent only on the TLS
-  WebSocket request. Google recommends ephemeral tokens for production client apps; this product
-  intentionally uses BYO persisted API keys per user request and exposes that cloud/privacy boundary
-  in the UI.
+- Gemini auth policy for this app: a user-provided current Gemini authorization key is sent only on
+  the TLS WebSocket request. Google rejects legacy standard keys as of September 2026. Google
+  recommends ephemeral tokens for production client apps; this product intentionally uses BYO
+  persisted API keys per user request and exposes that cloud/privacy boundary in the UI.
 - OkHttp runtime for Gemini WebSocket: 4.12.0.
 - Bergamot catalog model: de-en-base version 2, API 1, CC-BY-SA-4.0.
 - Bergamot archive SHA-256:
@@ -224,7 +224,7 @@ background auto-start, automatic backend benchmarking, or automatic cloud/local 
 | State transitions | JVM tests cover failure/stop/restart, partial replacement, stale-English rejection, final pairing, append, and clear transitions. |
 | Happy-path E2E | MockWebServer test covers Gemini WebSocket setup, API-key query wiring, audio send, interim callback, final callback, and explicit finish. Real Google + microphone remains **UNVERIFIED** until an Android device uses a valid user key. |
 | Persistence/process death | Local model markers are automated. Gemini key encryption/persistence uses real Android Keystore + SharedPreferences and remains **UNVERIFIED** until device/instrumentation execution. |
-| Failure/recovery | Missing/stale/invalid model installs are covered. Gemini setup/transport failure is structurally terminal; real auth/quota/network recovery remains **UNVERIFIED** against Google. |
+| Failure/recovery | Missing/stale/invalid model installs are covered. Gemini setup/transport failure is structurally terminal; JVM coverage distinguishes HTTP credential rejection from generic connection failure. Real auth/quota/network recovery remains **UNVERIFIED** against Google. |
 | Cross-feature | Selected ASR + shared translator readiness gate Start; all four ASR paths feed one translation/session owner. |
 | Concurrency/duplicates | Shared model-download mutex, service first-wins, Gemini credential mutation/start gating, bounded audio/final translation queues, conflated partial translation, and one Gemini socket per session are structurally enforced/tested where platform-free. |
 | UI behavior | Compile/lint cover picker/key wiring; real secure-key entry, TalkBack, IME, and large-font behavior remain **UNVERIFIED** until instrumentation/device checks. |
