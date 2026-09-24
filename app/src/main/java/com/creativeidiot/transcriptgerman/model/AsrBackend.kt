@@ -6,6 +6,7 @@ enum class AsrBackend(
 ) {
     PRIMELINE("primeline", true),
     NEMOTRON("nemotron", true),
+    CANARY("canary", true),
     GEMINI("gemini", false);
 
     companion object {
