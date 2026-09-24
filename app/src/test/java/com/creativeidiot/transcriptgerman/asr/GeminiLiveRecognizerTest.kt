@@ -3,7 +3,7 @@ package com.creativeidiot.transcriptgerman.asr
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -19,7 +19,7 @@ import org.junit.Test
 
 class GeminiLiveRecognizerTest {
     @Test
-    fun streamsAudioAndPublishesInterimThenFinalTranscript() = runTest {
+    fun streamsAudioAndPublishesInterimThenFinalTranscript() = runBlocking {
         val server = MockWebServer()
         val client = OkHttpClient()
         val interim = CompletableDeferred<String>()
@@ -97,7 +97,7 @@ class GeminiLiveRecognizerTest {
         }
     }
     @Test
-    fun finishCapturesFinalTranscriptEvenWithoutPriorInterim() = runTest {
+    fun finishCapturesFinalTranscriptEvenWithoutPriorInterim() = runBlocking {
         val server = MockWebServer()
         val client = OkHttpClient()
         val final = CompletableDeferred<String>()
