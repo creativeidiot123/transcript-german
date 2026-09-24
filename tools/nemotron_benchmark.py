@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Reproducible German Nemotron streaming corpus benchmark.
-
-Uses a pinned FLEURS German test parquet and the exact pinned sherpa-onnx
-Nemotron INT8 model files used by the Android app. It measures transcript
-accuracy under PCM16 attenuation and streaming latency/resource proxies under
-controlled parameter sweeps.
-"""
+"""Reproducible German Nemotron streaming corpus benchmark."""
 
 from __future__ import annotations
 
@@ -446,7 +440,6 @@ def write_csv(path: Path, rows: list[dict]) -> None:
         writer.writeheader()
         writer.writerows(rows)
 
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-dir", type=Path, required=True)
@@ -501,7 +494,6 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"Results written to {args.output_dir}", flush=True)
-
 
 if __name__ == "__main__":
     main()
