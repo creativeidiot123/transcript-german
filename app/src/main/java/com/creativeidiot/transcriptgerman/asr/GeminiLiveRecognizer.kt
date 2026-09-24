@@ -28,6 +28,7 @@ internal class GeminiLiveRecognizer private constructor(
     private val clientClosing = AtomicBoolean(false)
     private val failureSignaled = AtomicBoolean(false)
     private val latestPartial = AtomicReference("")
+    private val audioSinceLastFinal = AtomicBoolean(false)
     private val finalizationWaiter =
         AtomicReference<CompletableDeferred<Unit>?>(null)
 
@@ -35,6 +36,7 @@ internal class GeminiLiveRecognizer private constructor(
         check(!clientClosing.get()) { "Recognizer is closed" }
         if (!acceptingEvents.get()) return
 
+        audioSinceLastFinal.set(true)
         if (!webSocket.send(GeminiLiveProtocol.audioMessage(samples))) {
             signalFailure()
         }
@@ -43,9 +45,12 @@ internal class GeminiLiveRecognizer private constructor(
     override suspend fun finish() {
         if (clientClosing.get() || !acceptingEvents.get()) return
 
-        val shouldAwaitFinal = latestPartial.get().isNotBlank()
+        val hasUnfinalizedAudio = audioSinceLastFinal.get()
+        val shouldRequireFinal = latestPartial.get().isNotBlank()
         val waiter = CompletableDeferred<Unit>()
-        finalizationWaiter.set(waiter)
+        if (hasUnfinalizedAudio) {
+            finalizationWaiter.set(waiter)
+        }
 
         if (!webSocket.send(GeminiLiveProtocol.audioStreamEndMessage())) {
             finalizationWaiter.compareAndSet(waiter, null)
@@ -53,18 +58,24 @@ internal class GeminiLiveRecognizer private constructor(
             throw GeminiLiveConnectionException()
         }
 
-        if (
-            shouldAwaitFinal &&
-            withTimeoutOrNull(FINALIZATION_TIMEOUT_MILLIS) {
-                waiter.await()
-                true
-            } != true
-        ) {
+        if (hasUnfinalizedAudio) {
+            val timeoutMillis =
+                if (shouldRequireFinal) {
+                    FINALIZATION_TIMEOUT_MILLIS
+                } else {
+                    QUIET_FINALIZATION_GRACE_MILLIS
+                }
+            val finalized =
+                withTimeoutOrNull(timeoutMillis) {
+                    waiter.await()
+                    true
+                } == true
             finalizationWaiter.compareAndSet(waiter, null)
-            throw GeminiLiveConnectionException()
-        }
 
-        finalizationWaiter.compareAndSet(waiter, null)
+            if (shouldRequireFinal && !finalized) {
+                throw GeminiLiveConnectionException()
+            }
+        }
     }
 
     override fun close() {
@@ -90,6 +101,7 @@ internal class GeminiLiveRecognizer private constructor(
             val normalized = text.trim()
             if (normalized.isNotEmpty()) {
                 latestPartial.set("")
+                audioSinceLastFinal.set(false)
                 onFinal(normalized)
                 finalizationWaiter.getAndSet(null)?.complete(Unit)
             }
@@ -97,6 +109,8 @@ internal class GeminiLiveRecognizer private constructor(
     }
 
     private fun signalFailure() {
+        if (clientClosing.get()) return
+
         acceptingEvents.set(false)
         finalizationWaiter.getAndSet(null)?.cancel()
         if (failureSignaled.compareAndSet(false, true)) {
@@ -202,6 +216,7 @@ internal class GeminiLiveRecognizer private constructor(
 
         private const val CONNECT_TIMEOUT_MILLIS = 20_000L
         private const val FINALIZATION_TIMEOUT_MILLIS = 5_000L
+        private const val QUIET_FINALIZATION_GRACE_MILLIS = 2_000L
         private const val NORMAL_CLOSE_CODE = 1000
     }
 }
