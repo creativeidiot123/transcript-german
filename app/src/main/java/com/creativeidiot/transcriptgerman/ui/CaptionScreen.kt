@@ -110,6 +110,9 @@ fun CaptionScreen(
                                     AsrBackend.NEMOTRON ->
                                         stringResource(R.string.latency_note_nemotron)
 
+                                    AsrBackend.CANARY ->
+                                        stringResource(R.string.latency_note_canary)
+
                                     AsrBackend.GEMINI ->
                                         stringResource(R.string.latency_note_gemini)
                                 },
