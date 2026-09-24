@@ -52,7 +52,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestStartListening() {
-        val backend = viewModel.prepareMicrophoneRequest()
+        val backend = viewModel.prepareMicrophoneRequest() ?: return
 
         if (
             ContextCompat.checkSelfPermission(
