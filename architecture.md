@@ -92,14 +92,19 @@ ciphertext plus the random IV in a private SharedPreferences file. The AES key i
 kept in Android Keystore. The plaintext API key exists only in the caller-provided save buffer,
 during encryption/decryption, and in memory for creation of the active Gemini WebSocket request.
 
-CaptionUiState exposes only a configured Boolean and a safe storage-error flag. It never contains
-the key or encrypted blob. The Compose field uses password visual transformation and deliberately
-uses remember rather than rememberSaveable so an unsaved plaintext draft is not written into saved
-instance state.
+CaptionUiState exposes only configured/mutation-in-progress booleans and a safe storage-error flag.
+It never contains the key or encrypted blob. The Compose field uses password visual transformation
+and deliberately uses remember rather than rememberSaveable so an unsaved plaintext draft is not
+written into saved instance state.
 
-Save/replace/remove actions are accepted only while the caption session is idle. App backup is
-already disabled. If stored ciphertext cannot be decrypted, the credential record is cleared and
-Gemini becomes unconfigured instead of returning corrupted plaintext.
+Save/replace/remove actions are accepted only while the caption session is idle and are single-flight.
+CaptionViewModel flips the mutation-in-progress flag synchronously before launching encryption or
+clear work. Gemini Start readiness is false while that flag is set, and prepareMicrophoneRequest
+independently re-checks both the mutation flag and GeminiApiKeyStore configured truth before creating
+a pending start. This prevents a rapid Clear/Replace -> Start from opening a session with the old or
+soon-to-be-removed key. App backup is already disabled. If stored ciphertext cannot be decrypted,
+the credential record is cleared and Gemini becomes unconfigured instead of returning corrupted
+plaintext.
 
 ## Model installation
 
