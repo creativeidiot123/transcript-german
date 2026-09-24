@@ -11,22 +11,31 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.creativeidiot.transcriptgerman.R
 import com.creativeidiot.transcriptgerman.model.AsrBackend
@@ -42,6 +51,8 @@ fun CaptionScreen(
     onBackendSelected: (AsrBackend) -> Unit,
     onDownloadModel: () -> Unit,
     onDownloadTranslationModel: () -> Unit,
+    onSaveGeminiApiKey: (String) -> Unit,
+    onClearGeminiApiKey: () -> Unit,
     onStartListening: () -> Unit,
     onStopListening: () -> Unit,
     onClearTranscript: () -> Unit,
@@ -87,7 +98,11 @@ fun CaptionScreen(
                                 style = MaterialTheme.typography.headlineMedium,
                             )
                             Text(
-                                text = stringResource(R.string.screen_subtitle),
+                                text = if (state.selectedBackend == AsrBackend.GEMINI) {
+                                    stringResource(R.string.screen_subtitle_gemini)
+                                } else {
+                                    stringResource(R.string.screen_subtitle_local)
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                             )
 
@@ -98,16 +113,27 @@ fun CaptionScreen(
                                 onSelected = onBackendSelected,
                             )
 
-                            Text(
-                                text = stringResource(R.string.recognition_model_label),
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                            ModelStatus(
-                                backend = state.selectedBackend,
-                                model = state.model,
-                                downloadEnabled = !state.isAnyModelDownloading,
-                                onDownloadModel = onDownloadModel,
-                            )
+                            if (state.selectedBackend == AsrBackend.GEMINI) {
+                                GeminiCredentialStatus(
+                                    configured = state.geminiApiKeyConfigured,
+                                    storageError = state.geminiApiKeyStorageError,
+                                    enabled =
+                                        state.session.status == CaptionSessionStatus.IDLE,
+                                    onSave = onSaveGeminiApiKey,
+                                    onClear = onClearGeminiApiKey,
+                                )
+                            } else {
+                                Text(
+                                    text = stringResource(R.string.recognition_model_label),
+                                    style = MaterialTheme.typography.titleSmall,
+                                )
+                                ModelStatus(
+                                    backend = state.selectedBackend,
+                                    model = requireNotNull(state.model),
+                                    downloadEnabled = !state.isAnyModelDownloading,
+                                    onDownloadModel = onDownloadModel,
+                                )
+                            }
 
                             Text(
                                 text = stringResource(R.string.translation_model_label),
@@ -130,6 +156,9 @@ fun CaptionScreen(
 
                                     AsrBackend.NEMOTRON ->
                                         stringResource(R.string.latency_note_nemotron)
+
+                                    AsrBackend.GEMINI ->
+                                        stringResource(R.string.latency_note_gemini)
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -176,6 +205,77 @@ fun CaptionScreen(
                     onClearTranscript = onClearTranscript,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun GeminiCredentialStatus(
+    configured: Boolean,
+    storageError: Boolean,
+    enabled: Boolean,
+    onSave: (String) -> Unit,
+    onClear: () -> Unit,
+) {
+    var apiKey by remember { mutableStateOf("") }
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.gemini_api_key_label),
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Text(
+            text = if (configured) {
+                stringResource(R.string.gemini_api_key_saved)
+            } else {
+                stringResource(R.string.gemini_api_key_missing)
+            },
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        OutlinedTextField(
+            value = apiKey,
+            onValueChange = { apiKey = it },
+            enabled = enabled,
+            singleLine = true,
+            label = { Text(stringResource(R.string.gemini_api_key_field)) },
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Password,
+                imeAction = ImeAction.Done,
+                autoCorrectEnabled = false,
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(
+                onClick = {
+                    onSave(apiKey)
+                    apiKey = ""
+                },
+                enabled = enabled && apiKey.isNotBlank(),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.gemini_api_key_save))
+            }
+            OutlinedButton(
+                onClick = onClear,
+                enabled = enabled && configured,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.gemini_api_key_clear))
+            }
+        }
+        Text(
+            text = stringResource(R.string.gemini_api_key_storage_note),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        if (storageError) {
+            ErrorText(stringResource(R.string.gemini_api_key_storage_failed))
         }
     }
 }
@@ -228,6 +328,7 @@ private fun BackendPicker(
     onSelected: (AsrBackend) -> Unit,
 ) {
     Column(
+        modifier = Modifier.selectableGroup(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
@@ -235,9 +336,7 @@ private fun BackendPicker(
             style = MaterialTheme.typography.titleMedium,
         )
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .selectableGroup(),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             BackendButton(
@@ -255,6 +354,13 @@ private fun BackendPicker(
                 modifier = Modifier.weight(1f),
             )
         }
+        BackendButton(
+            backend = AsrBackend.GEMINI,
+            selected = selected == AsrBackend.GEMINI,
+            enabled = enabled,
+            onSelected = onSelected,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -269,6 +375,7 @@ private fun BackendButton(
     val label = when (backend) {
         AsrBackend.PRIMELINE -> stringResource(R.string.backend_primeline)
         AsrBackend.NEMOTRON -> stringResource(R.string.backend_nemotron)
+        AsrBackend.GEMINI -> stringResource(R.string.backend_gemini)
     }
 
     val selectionSemantics = modifier.semantics {
@@ -308,6 +415,7 @@ private fun ModelStatus(
         downloadLabel = when (backend) {
             AsrBackend.PRIMELINE -> stringResource(R.string.download_primeline_model)
             AsrBackend.NEMOTRON -> stringResource(R.string.download_nemotron_model)
+            AsrBackend.GEMINI -> error("Gemini does not use a local model download")
         },
         onDownloadModel = onDownloadModel,
     )
@@ -422,6 +530,10 @@ private fun SessionStatus(state: CaptionUiState) {
                 CaptionFailure.ASR_INITIALIZATION -> stringResource(R.string.error_asr_init)
                 CaptionFailure.TRANSLATION_INITIALIZATION ->
                     stringResource(R.string.error_translation_init)
+                CaptionFailure.GEMINI_API_KEY_NOT_CONFIGURED ->
+                    stringResource(R.string.error_gemini_key_missing)
+                CaptionFailure.GEMINI_CONNECTION ->
+                    stringResource(R.string.error_gemini_connection)
                 CaptionFailure.AUDIO_BACKPRESSURE -> stringResource(R.string.error_backpressure)
                 CaptionFailure.TRANSLATION -> stringResource(R.string.error_translation)
                 CaptionFailure.UNEXPECTED -> stringResource(R.string.error_unexpected)
@@ -447,8 +559,14 @@ private fun Controls(
     onClearTranscript: () -> Unit,
 ) {
     val running = state.session.status != CaptionSessionStatus.IDLE
+    val recognitionReady =
+        if (state.selectedBackend == AsrBackend.GEMINI) {
+            state.geminiApiKeyConfigured
+        } else {
+            state.model == ModelInstallState.Ready
+        }
     val modelsReady =
-        state.model == ModelInstallState.Ready &&
+        recognitionReady &&
             state.translationModel == ModelInstallState.Ready
 
     Column(
