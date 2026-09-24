@@ -47,6 +47,8 @@ streams microphone audio to Google for transcription.
 - Downloading: progress is visible when the server exposes total bytes.
 - Download/integrity failure: no Ready state; Retry is available.
 - Backend changes and Gemini credential changes are blocked while listening.
+- Saving, replacing, or removing the Gemini key is single-flight. Gemini Start is disabled and
+  independently rejected while that credential mutation is still in progress.
 - Microphone denial: no service starts; an explanatory message is shown.
 - Listening: a persistent foreground-service notification is posted.
 - Primeline speech: finalized German appears after a VAD endpoint; English follows from the same
@@ -85,6 +87,9 @@ streams microphone audio to Google for transcription.
 
 - All model downloads are serialized by one application-owned mutex.
 - Backend selection and Gemini credential mutation are accepted only while the session is idle.
+- Gemini credential mutation is single-flight. CaptionViewModel marks it in progress before
+  launching encryption/storage work, and Gemini start preparation requires both a configured key
+  and no mutation in progress so a rapid Clear/Replace -> Start cannot race the credential write.
 - Caption Start is first-wins while a session job is active.
 - Stop is idempotent.
 - Audio uses a bounded queue of 64 100-ms chunks. Saturation is terminal because dropping chunks
@@ -207,7 +212,7 @@ background auto-start, automatic backend benchmarking, or automatic cloud/local 
 | Persistence/process death | Local model markers are automated. Gemini key encryption/persistence uses real Android Keystore + SharedPreferences and remains **UNVERIFIED** until device/instrumentation execution. |
 | Failure/recovery | Missing/stale/invalid model installs are covered. Gemini setup/transport failure is structurally terminal; real auth/quota/network recovery remains **UNVERIFIED** against Google. |
 | Cross-feature | Selected ASR + shared translator readiness gate Start; all three ASR paths feed one translation/session owner. |
-| Concurrency/duplicates | Shared model-download mutex, service first-wins, bounded audio/final translation queues, conflated partial translation, and one Gemini socket per session are structurally enforced/tested where platform-free. |
+| Concurrency/duplicates | Shared model-download mutex, service first-wins, Gemini credential mutation/start gating, bounded audio/final translation queues, conflated partial translation, and one Gemini socket per session are structurally enforced/tested where platform-free. |
 | UI behavior | Compile/lint cover picker/key wiring; real secure-key entry, TalkBack, IME, and large-font behavior remain **UNVERIFIED** until instrumentation/device checks. |
 | Lifecycle/reboot | **UNVERIFIED** until service/microphone/native ASR/Bergamot/Gemini lifecycles are exercised on Android hardware/emulator. |
 | Regression | Primeline and Nemotron retain their existing recognizer/model paths; Gemini adds a third substitution branch without changing local model assets. |
