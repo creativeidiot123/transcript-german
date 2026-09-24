@@ -27,6 +27,7 @@ data class CaptionUiState(
     val translationModel: ModelInstallState,
     val isAnyModelDownloading: Boolean,
     val geminiApiKeyConfigured: Boolean,
+    val geminiApiKeyMutationInProgress: Boolean,
     val geminiApiKeyStorageError: Boolean,
     val session: CaptionSessionState,
     val microphonePermissionDenied: Boolean,
@@ -36,6 +37,7 @@ private data class ModelReadiness(
     val modelStates: Map<AsrBackend, ModelInstallState>,
     val translationModel: ModelInstallState,
     val geminiApiKeyConfigured: Boolean,
+    val geminiApiKeyMutationInProgress: Boolean,
 )
 
 class CaptionViewModel(
@@ -49,6 +51,7 @@ class CaptionViewModel(
     )
     private val microphonePermissionDenied = MutableStateFlow(false)
     private val geminiApiKeyStorageError = MutableStateFlow(false)
+    private val geminiApiKeyMutationInProgress = MutableStateFlow(false)
     private var pendingStartBackend: AsrBackend? = null
     private var downloadJob: Job? = null
     private var geminiKeyJob: Job? = null
@@ -57,11 +60,13 @@ class CaptionViewModel(
         modelRepository.states,
         bergamotModelRepository.state,
         geminiApiKeyStore.isConfigured,
-    ) { modelStates, translationModel, geminiApiKeyConfigured ->
+        geminiApiKeyMutationInProgress,
+    ) { modelStates, translationModel, geminiApiKeyConfigured, keyMutationInProgress ->
         ModelReadiness(
             modelStates = modelStates,
             translationModel = translationModel,
             geminiApiKeyConfigured = geminiApiKeyConfigured,
+            geminiApiKeyMutationInProgress = keyMutationInProgress,
         )
     }
 
@@ -81,6 +86,7 @@ class CaptionViewModel(
                 readiness.modelStates.values.any { it is ModelInstallState.Downloading } ||
                     readiness.translationModel is ModelInstallState.Downloading,
             geminiApiKeyConfigured = readiness.geminiApiKeyConfigured,
+            geminiApiKeyMutationInProgress = readiness.geminiApiKeyMutationInProgress,
             geminiApiKeyStorageError = keyStorageError,
             session = session,
             microphonePermissionDenied = permissionDenied,
@@ -124,6 +130,7 @@ class CaptionViewModel(
         if (apiKey.isEmpty()) return
 
         geminiApiKeyStorageError.value = false
+        geminiApiKeyMutationInProgress.value = true
         geminiKeyJob = viewModelScope.launch {
             try {
                 geminiApiKeyStore.saveApiKey(apiKey)
@@ -131,6 +138,8 @@ class CaptionViewModel(
                 throw cancelled
             } catch (_: Exception) {
                 geminiApiKeyStorageError.value = true
+            } finally {
+                geminiApiKeyMutationInProgress.value = false
             }
         }
     }
@@ -140,6 +149,7 @@ class CaptionViewModel(
         if (geminiKeyJob?.isActive == true) return
 
         geminiApiKeyStorageError.value = false
+        geminiApiKeyMutationInProgress.value = true
         geminiKeyJob = viewModelScope.launch {
             try {
                 geminiApiKeyStore.clearApiKey()
@@ -147,6 +157,8 @@ class CaptionViewModel(
                 throw cancelled
             } catch (_: Exception) {
                 geminiApiKeyStorageError.value = true
+            } finally {
+                geminiApiKeyMutationInProgress.value = false
             }
         }
     }
@@ -155,11 +167,23 @@ class CaptionViewModel(
         sessionStore.clearTranscript()
     }
 
-    fun prepareMicrophoneRequest(): AsrBackend {
+    fun prepareMicrophoneRequest(): AsrBackend? {
         microphonePermissionDenied.value = false
-        return selectedBackend.value.also { backend ->
-            pendingStartBackend = backend
+        val backend = selectedBackend.value
+
+        if (
+            backend == AsrBackend.GEMINI &&
+            !isGeminiStartAllowed(
+                configured = geminiApiKeyStore.isConfigured.value,
+                mutationInProgress = geminiApiKeyMutationInProgress.value,
+            )
+        ) {
+            pendingStartBackend = null
+            return null
         }
+
+        pendingStartBackend = backend
+        return backend
     }
 
     fun consumePreparedStart() {
@@ -186,6 +210,7 @@ class CaptionViewModel(
                 modelStates.values.any { it is ModelInstallState.Downloading } ||
                     translationModel is ModelInstallState.Downloading,
             geminiApiKeyConfigured = geminiApiKeyStore.isConfigured.value,
+            geminiApiKeyMutationInProgress = geminiApiKeyMutationInProgress.value,
             geminiApiKeyStorageError = false,
             session = session,
             microphonePermissionDenied = false,
@@ -211,3 +236,9 @@ class CaptionViewModel(
         }
     }
 }
+
+
+internal fun isGeminiStartAllowed(
+    configured: Boolean,
+    mutationInProgress: Boolean,
+): Boolean = configured && !mutationInProgress
