@@ -20,7 +20,7 @@ concurrency:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -60,14 +60,14 @@ jobs:
           curl -fL --retry 5 --retry-all-errors -o .benchmark/data/fleurs-de-test.parquet "$url"
           echo "3b40c214cabd603f1ddbf3da0499f7780975d6c56b75240f07a8990dbb7a6c07  .benchmark/data/fleurs-de-test.parquet" | sha256sum -c -
 
-      - name: Run German Nemotron torture benchmark
+      - name: Run German Nemotron validation benchmark
         run: >
           python tools/nemotron_benchmark.py
           --model-dir .benchmark/model
           --dataset .benchmark/data/fleurs-de-test.parquet
           --output-dir benchmark-results
           --accuracy-count 64
-          --sweep-count 12
+          --validation-only
 
       - name: Upload benchmark results
         if: always()

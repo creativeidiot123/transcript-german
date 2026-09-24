@@ -29,7 +29,7 @@ SEED = 20260924
 DEFAULT_THREADS = 4
 DEFAULT_CHUNK_MS = 100
 DEFAULT_ENDPOINT_S = 0.8
-DEFAULT_BLANK_PENALTY = 0.0
+DEFAULT_BLANK_PENALTY = 1.0
 RULE1_S = 2.4
 RULE3_S = 20.0
 MAX_TAIL_S = 3.0
@@ -328,27 +328,23 @@ def summarize(config: BenchmarkConfig, init_ms: float, results: list[SampleResul
 
 
 def stress_configs() -> list[BenchmarkConfig]:
-    configs = [
-        BenchmarkConfig("attenuation", f"baseline_{db}db_down", attenuation_db=db)
+    return [
+        BenchmarkConfig("attenuation", f"production_{db}db_down", attenuation_db=db)
         for db in STRESS_ATTENUATION_DB
     ]
-    candidates = (
-        ("blank_1.0", DEFAULT_ENDPOINT_S, 1.0),
-        ("endpoint_1.0s", 1.0, DEFAULT_BLANK_PENALTY),
-        ("endpoint_1.0s_blank_1.0", 1.0, 1.0),
-    )
-    configs.extend(
+
+
+def validation_configs() -> list[BenchmarkConfig]:
+    return [
         BenchmarkConfig(
             "validation",
             f"{label}_{db}db_down",
-            endpoint_s=endpoint,
             blank_penalty=penalty,
             attenuation_db=db,
         )
         for db in SWEEP_ATTENUATION_DB
-        for label, endpoint, penalty in candidates
-    )
-    return configs
+        for label, penalty in (("baseline", 0.0), ("production", DEFAULT_BLANK_PENALTY))
+    ]
 
 
 def sweep_configs() -> list[BenchmarkConfig]:
@@ -447,6 +443,7 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--accuracy-count", type=int, default=64)
     parser.add_argument("--sweep-count", type=int, default=12)
+    parser.add_argument("--validation-only", action="store_true")
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -462,15 +459,17 @@ def main() -> None:
     summaries: list[dict] = []
     details: list[dict] = []
 
-    for config in stress_configs():
+    primary_configs = validation_configs() if args.validation_only else stress_configs()
+    for config in primary_configs:
         summary, rows = run_config(args.model_dir, config, accuracy_samples)
         summaries.append(summary)
         details.extend(rows)
 
-    for config in sweep_configs():
-        summary, rows = run_config(args.model_dir, config, sweep_samples)
-        summaries.append(summary)
-        details.extend(rows)
+    if not args.validation_only:
+        for config in sweep_configs():
+            summary, rows = run_config(args.model_dir, config, sweep_samples)
+            summaries.append(summary)
+            details.extend(rows)
 
     write_csv(args.output_dir / "summary.csv", summaries)
     write_csv(args.output_dir / "samples.csv", details)
@@ -484,6 +483,7 @@ def main() -> None:
         "sample_rate": SAMPLE_RATE,
         "accuracy_count": len(accuracy_samples),
         "sweep_count": len(sweep_samples),
+        "validation_only": args.validation_only,
         "stress_attenuation_db": STRESS_ATTENUATION_DB,
         "sweep_attenuation_db": SWEEP_ATTENUATION_DB,
         "sherpa_onnx_version": getattr(sherpa_onnx, "__version__", "unknown"),

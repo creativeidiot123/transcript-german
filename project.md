@@ -17,7 +17,7 @@ and streams microphone audio to Google for transcription.
 ### Required journeys
 
 1. **Choose backend:** while idle, the user can select Primeline, Nemotron 3.5, Canary 180M Flash,
-   or Gemini 3.5 Transcribe Live. Primeline is the default after process start. The picker is locked
+   or Gemini 3.5 Transcribe Live. Nemotron is the default after process start. The picker is locked
    while any model download or caption session is active.
 2. **Prepare selected backend:** Primeline/Nemotron/Canary require their pinned local ASR bundle.
    Gemini instead requires a user-provided Gemini authorization key saved in the app. Bergamot is required for
@@ -76,7 +76,7 @@ and streams microphone audio to Google for transcription.
 - Gemini API key truth: GeminiApiKeyStore over app-private encrypted SharedPreferences; the AES-GCM
   key material is owned by Android Keystore. Only GeminiApiKeyStore may persist/decrypt the key.
 - Model download serialization: one application-owned mutex shared by both model repositories.
-- Selected ASR backend: CaptionViewModel, process-local; defaults to Primeline after process death.
+- Selected ASR backend: CaptionViewModel, process-local; defaults to Nemotron after process death.
 - Active-session backend: immutable CaptionService start input.
 - German/English transcript and current partial truth: CaptionSessionStore, process-local.
 - Translation scheduling/native model lifecycle: CaptionTranslationPipeline + BergamotTranslator,
@@ -159,10 +159,17 @@ and streams microphone audio to Google for transcription.
 - Nemotron base model: nvidia/nemotron-3.5-asr-streaming-0.6b.
 - Nemotron sherpa-onnx 560-ms INT8 export revision:
   ab43d895f5985b1bbab8b6eac8607fcdc05343f3.
-- Nemotron recognizer: sherpa-onnx OnlineRecognizer, greedy_search, per-stream language=de.
-  Endpoint detection keeps sherpa's 2.4-second no-content fallback and 20-second utterance cap while
-  finalizing decoded speech after 0.8 seconds of trailing silence. Explicit user stop feeds 300 ms
-  of zero tail padding before inputFinished so the stream can flush its final acoustic frames.
+- Nemotron recognizer: sherpa-onnx OnlineRecognizer, greedy_search, per-stream language=de,
+  four CPU threads, and blank penalty 1.0. Endpoint detection keeps sherpa's 2.4-second no-content
+  fallback and 20-second utterance cap while finalizing decoded speech after 0.8 seconds of trailing
+  silence. Explicit user stop feeds 300 ms of zero tail padding before inputFinished so the stream
+  can flush its final acoustic frames.
+- The pinned FLEURS German torture run used 64 utterances across seven attenuation levels plus
+  12-utterance parameter sweeps. Blank penalty 1.0 reduced clean sweep WER from 20.86% to 18.35%,
+  reduced deletions from 20 to 11, and moved median first partial from 3250 ms to 2950 ms; at
+  -30 dB it preserved WER while reducing CER from 66.17% to 61.96%. Routine PR validation now
+  compares baseline blank penalty 0.0 with production 1.0 on 64 clean and -30 dB utterances instead
+  of rerunning the full torture matrix.
 - Canary base model: nvidia/canary-180m-flash.
 - Canary sherpa-onnx INT8 export revision:
   b3fd7d9883a92f767be20b3792b9d54883a2f18f.
@@ -221,7 +228,7 @@ background auto-start, automatic backend benchmarking, or automatic cloud/local 
 
 | Category | MVP proof |
 | --- | --- |
-| Core logic | JVM tests cover ASR manifests, local VAD/Nemotron endpoint tuning and final tail-padding contract, cloud/local catalog separation, Gemini setup/PCM/transcript protocol, Bergamot verification, transcript pairing, and translation ordering. |
+| Core logic | JVM tests cover the Nemotron default backend, blank penalty, endpoint tuning and final tail-padding contract, ASR manifests, local VAD, cloud/local catalog separation, Gemini setup/PCM/transcript protocol, Bergamot verification, transcript pairing, and translation ordering. |
 | State transitions | JVM tests cover failure/stop/restart, partial replacement, stale-English rejection, final pairing, append, and clear transitions. |
 | Happy-path E2E | MockWebServer test covers Gemini WebSocket setup, API-key query wiring, audio send, interim callback, final callback, and explicit finish. Real Google + microphone remains **UNVERIFIED** until an Android device uses a valid user key. |
 | Persistence/process death | Local model markers are automated. Gemini key encryption/persistence uses real Android Keystore + SharedPreferences and remains **UNVERIFIED** until device/instrumentation execution. |
