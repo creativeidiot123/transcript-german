@@ -31,6 +31,7 @@ import com.creativeidiot.transcriptgerman.model.AsrBackend
 import com.creativeidiot.transcriptgerman.model.ModelInstallState
 import com.creativeidiot.transcriptgerman.session.CaptionFailure
 import com.creativeidiot.transcriptgerman.session.CaptionLine
+import com.creativeidiot.transcriptgerman.session.CaptionSessionState
 import com.creativeidiot.transcriptgerman.session.CaptionSessionStatus
 
 @Composable
@@ -48,13 +49,13 @@ fun CaptionScreen(
 ) {
     val lines = state.session.lines
     val partialText = state.session.partialText
-    val hasPartial = partialText.isNotBlank()
+    val autoFollowTrigger = captionAutoFollowTrigger(state.session)
+    val hasPartial = autoFollowTrigger.partialVisible
     val captionItemCount = lines.size + if (hasPartial) 1 else 0
-    val latestLineId = lines.lastOrNull()?.id
     val listState = rememberLazyListState()
     var previousCaptionItemCount by remember { mutableStateOf(captionItemCount) }
 
-    LaunchedEffect(latestLineId, hasPartial) {
+    LaunchedEffect(autoFollowTrigger) {
         val newCaptionItems = (captionItemCount - previousCaptionItemCount).coerceAtLeast(0)
         previousCaptionItemCount = captionItemCount
 
@@ -198,6 +199,17 @@ fun CaptionScreen(
         }
     }
 }
+
+internal data class CaptionAutoFollowTrigger(
+    val latestFinalId: Long?,
+    val partialVisible: Boolean,
+)
+
+internal fun captionAutoFollowTrigger(session: CaptionSessionState): CaptionAutoFollowTrigger =
+    CaptionAutoFollowTrigger(
+        latestFinalId = session.lines.lastOrNull()?.id,
+        partialVisible = session.partialText.isNotBlank(),
+    )
 
 internal fun shouldAutoFollowLiveCaption(
     lastVisibleItemIndex: Int?,
