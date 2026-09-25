@@ -38,8 +38,8 @@
     <string name="status_transcribing">Transcribing…</string>
     <string name="status_stopping">Finishing captions…</string>
     <string name="empty_transcript">German and English captions will appear here.</string>
-    <string name="caption_german">Deutsch: %1$s</string>
-    <string name="caption_english">English: %1$s</string>
+    <string name="caption_language_german">Deutsch</string>
+    <string name="caption_language_english">English</string>
     <string name="translation_pending">Translating…</string>
     <string name="translation_unavailable">Translation unavailable</string>
     <string name="latency_note_primeline">Primeline finalizes German after a short speech pause; Bergamot then adds the English translation.</string>
