@@ -1,5 +1,6 @@
 package com.creativeidiot.transcriptgerman.ui
 
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -64,21 +65,25 @@ fun CaptionScreen(
 
         val layoutInfo = listState.layoutInfo
         val targetItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
-        val targetFullyVisible =
-            targetItem != null &&
-                targetItem.offset >= layoutInfo.viewportStartOffset &&
-                targetItem.offset + targetItem.size <= layoutInfo.viewportEndOffset
+        val targetBottomOverflow = targetItem?.let {
+            (it.offset + it.size - layoutInfo.viewportEndOffset).coerceAtLeast(0)
+        }
+        val targetLiveEdgeVisible = targetBottomOverflow == 0
 
         if (
             shouldAutoFollowLiveCaption(
                 lastVisibleItemIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index,
                 totalItemsCount = layoutInfo.totalItemsCount,
                 targetIndex = targetIndex,
-                targetFullyVisible = targetFullyVisible,
+                targetLiveEdgeVisible = targetLiveEdgeVisible,
                 newCaptionItems = newCaptionItems,
             )
         ) {
-            listState.animateScrollToItem(targetIndex)
+            if (targetBottomOverflow != null) {
+                listState.animateScrollBy(targetBottomOverflow.toFloat())
+            } else {
+                listState.animateScrollToItem(targetIndex)
+            }
         }
     }
 
@@ -202,23 +207,28 @@ fun CaptionScreen(
 
 internal data class CaptionAutoFollowTrigger(
     val latestFinalId: Long?,
-    val partialVisible: Boolean,
-)
+    val partialText: String,
+    val partialEnglishText: String?,
+) {
+    val partialVisible: Boolean
+        get() = partialText.isNotBlank()
+}
 
 internal fun captionAutoFollowTrigger(session: CaptionSessionState): CaptionAutoFollowTrigger =
     CaptionAutoFollowTrigger(
         latestFinalId = session.lines.lastOrNull()?.id,
-        partialVisible = session.partialText.isNotBlank(),
+        partialText = session.partialText,
+        partialEnglishText = session.partialEnglishText,
     )
 
 internal fun shouldAutoFollowLiveCaption(
     lastVisibleItemIndex: Int?,
     totalItemsCount: Int,
     targetIndex: Int,
-    targetFullyVisible: Boolean,
+    targetLiveEdgeVisible: Boolean,
     newCaptionItems: Int,
 ): Boolean {
-    if (targetIndex <= 0 || targetFullyVisible) return false
+    if (targetIndex <= 0 || targetLiveEdgeVisible) return false
     if (totalItemsCount <= 0 || lastVisibleItemIndex == null) return true
 
     val allowedUnseenItems = newCaptionItems.coerceAtLeast(0)
