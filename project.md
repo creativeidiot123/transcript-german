@@ -165,14 +165,15 @@ and streams microphone audio to Google for transcription.
   silence. Explicit user stop feeds 300 ms of zero tail padding before inputFinished so the stream
   can flush its final acoustic frames.
 - The pinned FLEURS German torture run used 64 utterances across seven attenuation levels plus
-  controlled parameter sweeps. On the final 64-utterance comparison, blank penalty 1.0 improved
-  clean WER from 15.35% to 13.58% and clean CER from 8.02% to 6.83%; at -30 dB it improved WER
-  from 55.86% to 55.15% and CER from 44.99% to 42.59% with essentially unchanged compute cost.
-  A separate 24-utterance boundary sweep from 0.0 through 4.0 confirmed 1.0 as the best balanced
-  real-world setting: 1.5 was slightly better on clean WER (10.50% vs 10.71%) but worse at -30 dB
-  (47.48% vs 45.80%), while penalties >=2.0 increasingly traded deletions for insertions and 4.0
-  degraded badly. Routine PR validation compares baseline 0.0 with production 1.0 on 64 clean and
-  -30 dB utterances instead of rerunning the full torture matrix.
+  controlled parameter sweeps. Repeated 64-utterance validation favored blank penalty 1.0; the
+  latest run improved clean WER from 15.28% to 13.08% and clean CER from 8.17% to 6.94%, while
+  -30 dB WER improved from 58.64% to 55.30% and CER from 47.83% to 42.83%. Clean deletions fell
+  from 77 to 47 with insertions 20 to 21; at -30 dB deletions fell from 607 to 503 with insertions
+  19 to 25. A separate 24-utterance boundary sweep from 0.0 through 4.0 confirmed 1.0 as the best
+  balanced real-world setting: 1.5 was slightly better on clean WER (10.50% vs 10.71%) but worse
+  at -30 dB (47.48% vs 45.80%), while penalties >=2.0 increasingly traded deletions for insertions
+  and 4.0 degraded badly. Routine PR validation compares baseline 0.0 with production 1.0 on 64
+  clean and -30 dB utterances instead of rerunning the full torture matrix.
 - Canary base model: nvidia/canary-180m-flash.
 - Canary sherpa-onnx INT8 export revision:
   b3fd7d9883a92f767be20b3792b9d54883a2f18f.
