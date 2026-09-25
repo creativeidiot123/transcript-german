@@ -2,14 +2,14 @@ package com.creativeidiot.transcriptgerman.ui
 
 import com.creativeidiot.transcriptgerman.session.CaptionLine
 import com.creativeidiot.transcriptgerman.session.CaptionSessionState
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CaptionScrollPolicyTest {
     @Test
-    fun partialHypothesisUpdates_keepTheSameAutoFollowTrigger() {
+    fun partialHypothesisUpdates_recheckLiveEdgeVisibility() {
         val before = CaptionSessionState(
             lines = listOf(CaptionLine(id = 4L, text = "Vorherige Zeile")),
             partialText = "Guten",
@@ -19,7 +19,7 @@ class CaptionScrollPolicyTest {
             partialEnglishText = "Good morning everyone",
         )
 
-        assertEquals(
+        assertNotEquals(
             captionAutoFollowTrigger(before),
             captionAutoFollowTrigger(after),
         )
@@ -48,7 +48,7 @@ class CaptionScrollPolicyTest {
                 lastVisibleItemIndex = 7,
                 totalItemsCount = 9,
                 targetIndex = 8,
-                targetFullyVisible = false,
+                targetLiveEdgeVisible = false,
                 newCaptionItems = 1,
             ),
         )
@@ -61,7 +61,7 @@ class CaptionScrollPolicyTest {
                 lastVisibleItemIndex = 6,
                 totalItemsCount = 9,
                 targetIndex = 8,
-                targetFullyVisible = false,
+                targetLiveEdgeVisible = false,
                 newCaptionItems = 1,
             ),
         )
@@ -74,7 +74,7 @@ class CaptionScrollPolicyTest {
                 lastVisibleItemIndex = 7,
                 totalItemsCount = 9,
                 targetIndex = 8,
-                targetFullyVisible = false,
+                targetLiveEdgeVisible = false,
                 newCaptionItems = 0,
             ),
         )
@@ -83,21 +83,43 @@ class CaptionScrollPolicyTest {
                 lastVisibleItemIndex = 8,
                 totalItemsCount = 9,
                 targetIndex = 8,
-                targetFullyVisible = false,
+                targetLiveEdgeVisible = false,
                 newCaptionItems = 0,
             ),
         )
     }
 
     @Test
-    fun fullyVisibleTarget_neverRequestsAnotherScroll() {
+    fun visibleLiveEdge_neverRequestsAnotherScroll() {
         assertFalse(
             shouldAutoFollowLiveCaption(
                 lastVisibleItemIndex = 8,
                 totalItemsCount = 9,
                 targetIndex = 8,
-                targetFullyVisible = true,
+                targetLiveEdgeVisible = true,
                 newCaptionItems = 1,
+            ),
+        )
+    }
+
+    @Test
+    fun growingCaption_scrollsOnlyWhileReaderRemainsAtLiveEdge() {
+        assertTrue(
+            shouldAutoFollowLiveCaption(
+                lastVisibleItemIndex = 8,
+                totalItemsCount = 9,
+                targetIndex = 8,
+                targetLiveEdgeVisible = false,
+                newCaptionItems = 0,
+            ),
+        )
+        assertFalse(
+            shouldAutoFollowLiveCaption(
+                lastVisibleItemIndex = 6,
+                totalItemsCount = 9,
+                targetIndex = 8,
+                targetLiveEdgeVisible = false,
+                newCaptionItems = 0,
             ),
         )
     }
@@ -109,7 +131,7 @@ class CaptionScrollPolicyTest {
                 lastVisibleItemIndex = 5,
                 totalItemsCount = 9,
                 targetIndex = 8,
-                targetFullyVisible = false,
+                targetLiveEdgeVisible = false,
                 newCaptionItems = 3,
             ),
         )
