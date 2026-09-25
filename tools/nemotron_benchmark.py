@@ -334,16 +334,15 @@ def stress_configs() -> list[BenchmarkConfig]:
     ]
 
 def validation_configs() -> list[BenchmarkConfig]:
-    penalties = (0.0, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0)
     return [
         BenchmarkConfig(
-            "blank_boundary",
-            f"blank_{penalty:g}_{db}db_down",
+            "validation",
+            f"{label}_{db}db_down",
             blank_penalty=penalty,
             attenuation_db=db,
         )
         for db in SWEEP_ATTENUATION_DB
-        for penalty in penalties
+        for label, penalty in (("baseline", 0.0), ("production", DEFAULT_BLANK_PENALTY))
     ]
 
 def sweep_configs() -> list[BenchmarkConfig]:
