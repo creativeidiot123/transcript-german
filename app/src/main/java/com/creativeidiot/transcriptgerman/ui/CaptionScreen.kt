@@ -1,5 +1,6 @@
 package com.creativeidiot.transcriptgerman.ui
 
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,14 +19,20 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.creativeidiot.transcriptgerman.R
 import com.creativeidiot.transcriptgerman.model.AsrBackend
 import com.creativeidiot.transcriptgerman.model.ModelInstallState
 import com.creativeidiot.transcriptgerman.session.CaptionFailure
 import com.creativeidiot.transcriptgerman.session.CaptionLine
+import com.creativeidiot.transcriptgerman.session.CaptionSessionState
 import com.creativeidiot.transcriptgerman.session.CaptionSessionStatus
 
 @Composable
@@ -43,12 +50,40 @@ fun CaptionScreen(
 ) {
     val lines = state.session.lines
     val partialText = state.session.partialText
+    val autoFollowTrigger = captionAutoFollowTrigger(state.session)
+    val hasPartial = autoFollowTrigger.partialVisible
+    val captionItemCount = lines.size + if (hasPartial) 1 else 0
     val listState = rememberLazyListState()
+    var previousCaptionItemCount by remember { mutableStateOf(captionItemCount) }
 
-    LaunchedEffect(lines.size, partialText, state.session.partialEnglishText) {
-        val lastTranscriptIndex = lines.size + if (partialText.isNotBlank()) 1 else 0
-        if (lastTranscriptIndex > 0) {
-            listState.scrollToItem(lastTranscriptIndex)
+    LaunchedEffect(autoFollowTrigger) {
+        val newCaptionItems = (captionItemCount - previousCaptionItemCount).coerceAtLeast(0)
+        previousCaptionItemCount = captionItemCount
+
+        val targetIndex = captionItemCount
+        if (targetIndex <= 0) return@LaunchedEffect
+
+        val layoutInfo = listState.layoutInfo
+        val targetItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
+        val targetBottomOverflow = targetItem?.let {
+            (it.offset + it.size - layoutInfo.viewportEndOffset).coerceAtLeast(0)
+        }
+        val targetLiveEdgeVisible = targetBottomOverflow == 0
+
+        if (
+            shouldAutoFollowLiveCaption(
+                lastVisibleItemIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index,
+                totalItemsCount = layoutInfo.totalItemsCount,
+                targetIndex = targetIndex,
+                targetLiveEdgeVisible = targetLiveEdgeVisible,
+                newCaptionItems = newCaptionItems,
+            )
+        ) {
+            if (targetBottomOverflow != null) {
+                listState.animateScrollBy(targetBottomOverflow.toFloat())
+            } else {
+                listState.animateScrollToItem(targetIndex)
+            }
         }
     }
 
@@ -69,8 +104,8 @@ fun CaptionScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    contentPadding = PaddingValues(bottom = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(top = 4.dp, bottom = 80.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     item {
                         Column(
@@ -121,7 +156,7 @@ fun CaptionScreen(
                         }
                     }
 
-                    if (lines.isEmpty() && partialText.isBlank()) {
+                    if (lines.isEmpty() && !hasPartial) {
                         item {
                             Text(
                                 text = stringResource(R.string.empty_transcript),
@@ -133,6 +168,7 @@ fun CaptionScreen(
                         items(
                             items = lines,
                             key = { it.id },
+                            contentType = { "caption-pair" },
                         ) { line ->
                             CaptionPair(
                                 line = line,
@@ -142,12 +178,16 @@ fun CaptionScreen(
                             )
                         }
 
-                        if (partialText.isNotBlank()) {
-                            item(key = "partial-caption") {
+                        if (hasPartial) {
+                            item(
+                                key = "partial-caption",
+                                contentType = "caption-pair",
+                            ) {
                                 CaptionPair(
                                     german = partialText,
                                     english = state.session.partialEnglishText,
                                     pending = true,
+                                    isLive = true,
                                 )
                             }
                         }
@@ -165,6 +205,37 @@ fun CaptionScreen(
     }
 }
 
+internal data class CaptionAutoFollowTrigger(
+    val latestFinalId: Long?,
+    val partialText: String,
+    val partialEnglishText: String?,
+) {
+    val partialVisible: Boolean
+        get() = partialText.isNotBlank()
+}
+
+internal fun captionAutoFollowTrigger(session: CaptionSessionState): CaptionAutoFollowTrigger =
+    CaptionAutoFollowTrigger(
+        latestFinalId = session.lines.lastOrNull()?.id,
+        partialText = session.partialText,
+        partialEnglishText = session.partialEnglishText,
+    )
+
+internal fun shouldAutoFollowLiveCaption(
+    lastVisibleItemIndex: Int?,
+    totalItemsCount: Int,
+    targetIndex: Int,
+    targetLiveEdgeVisible: Boolean,
+    newCaptionItems: Int,
+): Boolean {
+    if (targetIndex <= 0 || targetLiveEdgeVisible) return false
+    if (totalItemsCount <= 0 || lastVisibleItemIndex == null) return true
+
+    val allowedUnseenItems = newCaptionItems.coerceAtLeast(0)
+    val liveEdgeIndex = (totalItemsCount - 1 - allowedUnseenItems).coerceAtLeast(0)
+    return lastVisibleItemIndex >= liveEdgeIndex
+}
+
 @Composable
 private fun CaptionPair(
     line: CaptionLine,
@@ -174,6 +245,7 @@ private fun CaptionPair(
         german = line.text,
         english = line.englishText,
         pending = line.englishText == null && translationPending,
+        isLive = false,
     )
 }
 
@@ -182,27 +254,59 @@ private fun CaptionPair(
     german: String,
     english: String?,
     pending: Boolean,
+    isLive: Boolean,
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+    val contentColor =
+        if (isLive) {
+            MaterialTheme.colorScheme.onSecondaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {},
+        shape = MaterialTheme.shapes.large,
+        color = if (isLive) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
+        contentColor = contentColor,
     ) {
-        Text(
-            text = stringResource(R.string.caption_german, german),
-            style = MaterialTheme.typography.bodyLarge,
-        )
-        Text(
-            text = stringResource(
-                R.string.caption_english,
-                english ?: if (pending) {
-                    stringResource(R.string.translation_pending)
-                } else {
-                    stringResource(R.string.translation_unavailable)
-                },
-            ),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = stringResource(R.string.caption_language_german),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Text(
+                    text = german,
+                    style = MaterialTheme.typography.titleMedium,
+                    minLines = 2,
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = stringResource(R.string.caption_language_english),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                Text(
+                    text = english ?: if (pending) {
+                        stringResource(R.string.translation_pending)
+                    } else {
+                        stringResource(R.string.translation_unavailable)
+                    },
+                    style = MaterialTheme.typography.bodyLarge,
+                    minLines = 2,
+                )
+            }
+        }
     }
 }
 
