@@ -265,6 +265,7 @@ private fun CaptionPair(
                 Text(
                     text = german,
                     style = MaterialTheme.typography.titleMedium,
+                    minLines = 2,
                 )
             }
 
@@ -280,6 +281,7 @@ private fun CaptionPair(
                         stringResource(R.string.translation_unavailable)
                     },
                     style = MaterialTheme.typography.bodyLarge,
+                    minLines = 2,
                 )
             }
         }
