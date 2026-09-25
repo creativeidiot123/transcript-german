@@ -26,4 +26,9 @@ class AsrBackendTest {
         assertTrue(AsrBackend.CANARY.requiresLocalModel)
         assertFalse(AsrBackend.GEMINI.requiresLocalModel)
     }
+
+    @Test
+    fun defaultBackend_isNemotron() {
+        assertEquals(AsrBackend.NEMOTRON, DEFAULT_ASR_BACKEND)
+    }
 }

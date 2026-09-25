@@ -26,6 +26,7 @@ import com.creativeidiot.transcriptgerman.asr.NemotronRecognizer
 import com.creativeidiot.transcriptgerman.asr.ParakeetRecognizer
 import com.creativeidiot.transcriptgerman.audio.AudioCapture
 import com.creativeidiot.transcriptgerman.model.AsrBackend
+import com.creativeidiot.transcriptgerman.model.DEFAULT_ASR_BACKEND
 import com.creativeidiot.transcriptgerman.session.CaptionFailure
 import com.creativeidiot.transcriptgerman.session.CaptionSessionStore
 import com.creativeidiot.transcriptgerman.translation.BergamotTranslator
@@ -84,7 +85,7 @@ class CaptionService : Service() {
             ACTION_START -> {
                 val backend =
                     AsrBackend.fromWireValue(intent.getStringExtra(EXTRA_BACKEND))
-                        ?: AsrBackend.PRIMELINE
+                        ?: DEFAULT_ASR_BACKEND
                 startForegroundSession(backend)
             }
 

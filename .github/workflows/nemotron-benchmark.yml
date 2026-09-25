@@ -1,0 +1,79 @@
+name: Nemotron corpus benchmark
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/nemotron-benchmark.yml"
+      - "tools/nemotron_benchmark.py"
+      - "app/src/main/java/com/creativeidiot/transcriptgerman/asr/NemotronRecognizer.kt"
+      - "app/src/main/java/com/creativeidiot/transcriptgerman/asr/RecognizerTuning.kt"
+      - "app/src/main/java/com/creativeidiot/transcriptgerman/model/ModelSpec.kt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nemotron-benchmark-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install benchmark dependencies
+        run: >
+          python -m pip install
+          sherpa-onnx==1.13.8
+          pyarrow==17.0.0
+          soundfile==0.12.1
+          jiwer==3.0.4
+
+      - name: Download pinned Nemotron model
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .benchmark/model
+          base="https://huggingface.co/csukuangfj2/sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11/resolve/ab43d895f5985b1bbab8b6eac8607fcdc05343f3"
+          curl -fL --retry 5 --retry-all-errors -o .benchmark/model/encoder.int8.onnx "$base/encoder.int8.onnx?download=true"
+          curl -fL --retry 5 --retry-all-errors -o .benchmark/model/decoder.int8.onnx "$base/decoder.int8.onnx?download=true"
+          curl -fL --retry 5 --retry-all-errors -o .benchmark/model/joiner.int8.onnx "$base/joiner.int8.onnx?download=true"
+          curl -fL --retry 5 --retry-all-errors -o .benchmark/model/tokens.txt "$base/tokens.txt?download=true"
+          echo "012e9321373af99021415e0b0eb3ec827b4be3153be6f30d9b448fe65e896e68  .benchmark/model/encoder.int8.onnx" | sha256sum -c -
+          echo "19f9c98fc6d0a2c33a65a43b36fdb2e914c26c0aa9764be3aebc502a1e982fb0  .benchmark/model/decoder.int8.onnx" | sha256sum -c -
+          echo "4101c7c679a0bc30483794b27a059e34e79232aa2068d78d51231a22c8b0d7ce  .benchmark/model/joiner.int8.onnx" | sha256sum -c -
+
+      - name: Download pinned FLEURS German test corpus
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .benchmark/data
+          url="https://huggingface.co/datasets/google/fleurs/resolve/0b98f0538af50329c9b336824d7d697c594b9c26/de_de/test-00000-of-00001.parquet?download=true"
+          curl -fL --retry 5 --retry-all-errors -o .benchmark/data/fleurs-de-test.parquet "$url"
+          echo "3b40c214cabd603f1ddbf3da0499f7780975d6c56b75240f07a8990dbb7a6c07  .benchmark/data/fleurs-de-test.parquet" | sha256sum -c -
+
+      - name: Run German Nemotron validation benchmark
+        run: >
+          python tools/nemotron_benchmark.py
+          --model-dir .benchmark/model
+          --dataset .benchmark/data/fleurs-de-test.parquet
+          --output-dir benchmark-results
+          --accuracy-count 64
+          --validation-only
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nemotron-german-corpus-benchmark
+          path: benchmark-results
+          if-no-files-found: error
+          retention-days: 7

@@ -40,15 +40,20 @@ internal class NemotronRecognizer(
                 endpointConfig = nemotronEndpointConfig(),
                 enableEndpoint = true,
                 decodingMethod = "greedy_search",
+                blankPenalty = NEMOTRON_BLANK_PENALTY,
             ),
         )
-        recognizer = createdRecognizer
-
-        stream = try {
-            createdRecognizer.createStream().also { createdStream ->
-                createdStream.setOption(LANGUAGE_OPTION, GERMAN_LANGUAGE)
-            }
+        var createdStream: OnlineStream? = null
+        try {
+            val streamCandidate = createdRecognizer.createStream()
+            createdStream = streamCandidate
+            streamCandidate.setOption(LANGUAGE_OPTION, GERMAN_LANGUAGE)
         } catch (failure: Throwable) {
+            try {
+                createdStream?.release()
+            } catch (releaseFailure: Throwable) {
+                failure.addSuppressed(releaseFailure)
+            }
             try {
                 createdRecognizer.release()
             } catch (releaseFailure: Throwable) {
@@ -56,6 +61,9 @@ internal class NemotronRecognizer(
             }
             throw failure
         }
+
+        recognizer = createdRecognizer
+        stream = requireNotNull(createdStream)
     }
 
     override fun accept(samples: FloatArray) {
@@ -79,6 +87,9 @@ internal class NemotronRecognizer(
     override suspend fun finish() {
         if (closed) return
 
+        // sherpa-onnx's Nemotron streaming example feeds a short silence tail before EOF so
+        // the final acoustic frames can be decoded instead of clipping the last spoken word.
+        stream.acceptWaveform(nemotronFinalPadding(SAMPLE_RATE), SAMPLE_RATE)
         stream.inputFinished()
         decodeAvailable()
         publishFinal(recognizer.getResult(stream).text.trim())
