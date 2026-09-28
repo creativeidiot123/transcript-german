@@ -150,7 +150,10 @@ CanaryRecognizer mirrors the existing local VAD-segmented ownership shape withou
 native state with Primeline. It owns one Silero VAD instance and one sherpa-onnx OfflineRecognizer
 configured with source and target language both set to German and punctuation enabled. sherpa-onnx
 1.13.8 reads Canary's feature dimension and NeMo normalization settings from the pinned ONNX model
-metadata, so the app does not duplicate those model-specific values.
+metadata, so the app does not duplicate those model-specific values. The pinned tokens.txt stores
+word-start pieces with a leading space that sherpa-onnx trims away, so CanaryRecognizer writes a
+transient copy with the U+2581 word marker restored, constructs the recognizer from it, and deletes it;
+the verified download remains the only durable token file.
 
 Each completed VAD segment is decoded synchronously on the service session worker and emits one final
 German caption into the same translation path as Primeline. Canary exposes no live ASR partials.

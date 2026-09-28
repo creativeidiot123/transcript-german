@@ -179,6 +179,11 @@ and streams microphone audio to Google for transcription.
   b3fd7d9883a92f767be20b3792b9d54883a2f18f.
 - Canary recognizer: sherpa-onnx OfflineRecognizer with srcLang=de, tgtLang=de, punctuation enabled,
   and model-defined feature/normalization metadata.
+- The pinned Canary tokens.txt writes SentencePiece word-start pieces with a leading ASCII space
+  instead of U+2581. sherpa-onnx 1.13.8 trims each token line, so decoding it directly drops every
+  word boundary. CanaryRecognizer derives a transient token table with U+2581 restored (byte-identical
+  to the official sherpa-onnx release tokens.txt) for recognizer construction; the downloaded file and
+  its pinned checksum are unchanged.
 - Gemini model: gemini-3.5-transcribe-live through the Gemini Live v1beta BidiGenerateContent
   WebSocket endpoint, response modality TEXT, input transcription language code de-DE, VERBATIM
   transcription mode, and server automatic activity detection with 800 ms trailing silence.
@@ -243,4 +248,4 @@ background auto-start, automatic backend benchmarking, or automatic cloud/local 
 | Concurrency/duplicates | Shared model-download mutex, service first-wins, Gemini credential mutation/start gating, bounded audio/final translation queues, conflated partial translation, and one Gemini socket per session are structurally enforced/tested where platform-free. |
 | UI behavior | Compile/lint cover picker/key wiring; real secure-key entry, TalkBack, IME, and large-font behavior remain **UNVERIFIED** until instrumentation/device checks. |
 | Lifecycle/reboot | **UNVERIFIED** until service/microphone/native ASR/Bergamot/Gemini lifecycles are exercised on Android hardware/emulator. |
-| Regression | Primeline, Nemotron, Canary, and Gemini retain their pinned model/runtime paths; JVM tests pin the tuned local endpoint/VAD profiles and Gemini setup contract. |
+| Regression | Primeline, Nemotron, Canary, and Gemini retain their pinned model/runtime paths; JVM tests pin the tuned local endpoint/VAD profiles, Canary word-marker restoration, and Gemini setup contract. |
