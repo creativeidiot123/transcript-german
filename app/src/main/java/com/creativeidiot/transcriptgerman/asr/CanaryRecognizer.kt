@@ -25,7 +25,11 @@ internal class CanaryRecognizer(
         )
         vad = createdVad
 
+        val sherpaTokens = File(modelDirectory, SHERPA_TOKENS_FILE)
         recognizer = try {
+            sherpaTokens.writeText(
+                restoreCanaryWordMarkers(File(modelDirectory, "tokens.txt").readText()),
+            )
             OfflineRecognizer(
                 config = OfflineRecognizerConfig(
                     featConfig = FeatureConfig(sampleRate = SAMPLE_RATE),
@@ -37,7 +41,7 @@ internal class CanaryRecognizer(
                             tgtLang = "de",
                             usePnc = true,
                         ),
-                        tokens = File(modelDirectory, "tokens.txt").absolutePath,
+                        tokens = sherpaTokens.absolutePath,
                         numThreads = 4,
                         provider = "cpu",
                     ),
@@ -50,6 +54,9 @@ internal class CanaryRecognizer(
                 failure.addSuppressed(releaseFailure)
             }
             throw failure
+        } finally {
+            // sherpa-onnx reads the token table only while constructing the recognizer.
+            sherpaTokens.delete()
         }
     }
 
@@ -118,5 +125,16 @@ internal class CanaryRecognizer(
 
     private companion object {
         const val SAMPLE_RATE = 16_000
+        const val SHERPA_TOKENS_FILE = "tokens.sherpa.txt"
     }
 }
+
+/**
+ * The pinned Canary export writes SentencePiece word-start pieces with a leading ASCII space instead
+ * of U+2581. sherpa-onnx trims every tokens.txt line, which erases those word boundaries and glues
+ * decoded words together, so restore the marker sherpa-onnx maps back to a space.
+ */
+internal fun restoreCanaryWordMarkers(tokens: String): String =
+    tokens.lineSequence().joinToString("\n") { line ->
+        if (line.startsWith(' ')) "\u2581" + line.substring(1) else line
+    }
