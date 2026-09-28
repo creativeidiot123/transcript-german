@@ -2,7 +2,9 @@ package com.creativeidiot.transcriptgerman.session
 
 import com.creativeidiot.transcriptgerman.model.AsrBackend
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CaptionSessionStoreTest {
@@ -65,14 +67,19 @@ class CaptionSessionStoreTest {
 
         store.updatePartial("Guten")
         store.updatePartial("Guten Morgen")
-        store.updatePartialTranslation("Guten", "Good")
+        store.updatePartialTranslation("Hallo", "Hello")
         assertNull(store.state.value.partialEnglishText)
+
+        store.updatePartialTranslation("Guten", "Good")
+        assertEquals("Good", store.state.value.partialEnglishText)
+        assertTrue(store.state.value.partialEnglishLagging)
 
         store.updatePartialTranslation("Guten Morgen", "Good morning")
         assertEquals("Good morning", store.state.value.partialEnglishText)
+        assertFalse(store.state.value.partialEnglishLagging)
 
         val lineId = store.appendFinal("Guten Morgen")
-        assertEquals(null, store.state.value.lines.single().englishText)
+        assertEquals("Good morning", store.state.value.lines.single().englishText)
 
         store.updateFinalTranslation(requireNotNull(lineId), "Good morning")
         assertEquals("Good morning", store.state.value.lines.single().englishText)
@@ -82,6 +89,85 @@ class CaptionSessionStoreTest {
         store.clearTranscript()
         store.updateFinalTranslation(lineId, "Late translation")
         assertEquals(emptyList<CaptionLine>(), store.state.value.lines)
+    }
+
+    @Test
+    fun growingPartial_keepsOlderEnglishVisibleInsteadOfBlanking() {
+        val store = CaptionSessionStore()
+        store.markStarting(AsrBackend.NEMOTRON)
+        store.markListening()
+
+        store.updatePartial("Das ist gut?")
+        store.updatePartialTranslation("Das ist gut?", "Is that good?")
+        assertFalse(store.state.value.partialEnglishLagging)
+
+        // Streaming ASR revises trailing punctuation while it keeps talking.
+        store.updatePartial("Das ist gut, wenn")
+        assertEquals("Is that good?", store.state.value.partialEnglishText)
+        assertTrue(store.state.value.partialEnglishLagging)
+
+        store.updatePartialTranslation("Das ist gut, wenn", "That's good if")
+        assertEquals("That's good if", store.state.value.partialEnglishText)
+        assertFalse(store.state.value.partialEnglishLagging)
+    }
+
+    @Test
+    fun divergedPartial_dropsEnglishFromTheOldHypothesis() {
+        val store = CaptionSessionStore()
+        store.markStarting(AsrBackend.GEMINI)
+        store.markListening()
+
+        store.updatePartial("Wir gehen")
+        store.updatePartialTranslation("Wir gehen", "We go")
+        store.updatePartial("Vier gehen")
+
+        assertNull(store.state.value.partialEnglishText)
+        assertFalse(store.state.value.partialEnglishLagging)
+    }
+
+    @Test
+    fun lateTranslationOfPreviousUtterance_doesNotAttachToNextPartial() {
+        val store = CaptionSessionStore()
+        store.markStarting(AsrBackend.NEMOTRON)
+        store.markListening()
+
+        store.updatePartial("Guten Morgen")
+        store.appendFinal("Guten Morgen")
+        store.updatePartial("Wie geht")
+        store.updatePartialTranslation("Guten Morgen", "Good morning")
+
+        assertNull(store.state.value.partialEnglishText)
+        assertNull(store.state.value.lines.single().englishText)
+    }
+
+    @Test
+    fun finalExtendingTranslatedPartial_showsDraftUntilFinalTranslation() {
+        val store = CaptionSessionStore()
+        store.markStarting(AsrBackend.NEMOTRON)
+        store.markListening()
+
+        store.updatePartial("Guten Morgen")
+        store.updatePartialTranslation("Guten Morgen", "Good morning")
+        val lineId = requireNotNull(store.appendFinal("Guten Morgen zusammen."))
+
+        val committed = store.state.value.lines.single()
+        assertNull(committed.englishText)
+        assertEquals("Good morning", committed.draftEnglishText)
+
+        store.updateFinalTranslation(lineId, "Good morning everyone.")
+
+        val translated = store.state.value.lines.single()
+        assertEquals("Good morning everyone.", translated.englishText)
+        assertNull(translated.draftEnglishText)
+    }
+
+    @Test
+    fun continuesHypothesis_ignoresOnlyTrailingPunctuationOfTheSource() {
+        assertTrue("Das ist gut, wenn".continuesHypothesis("Das ist gut?"))
+        assertTrue("Methoden".continuesHypothesis("Methode"))
+        assertFalse("Vier gehen".continuesHypothesis("Wir gehen"))
+        assertFalse("Hallo".continuesHypothesis("?"))
+        assertFalse("".continuesHypothesis("Hallo"))
     }
 
     @Test

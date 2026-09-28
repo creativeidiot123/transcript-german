@@ -10,7 +10,6 @@ import java.io.File
 
 internal class NemotronRecognizer(
     modelDirectory: File,
-    private val onTranscribing: (Boolean) -> Unit,
     private val onPartial: (String) -> Unit,
     private val onFinal: (String) -> Unit,
 ) : CaptionRecognizer {
@@ -106,16 +105,11 @@ internal class NemotronRecognizer(
         }
     }
 
+    // No transcribing status blips here: decoding runs on every 100-ms chunk, so toggling session
+    // status per chunk only churned UI state. Live partials already signal speech.
     private fun decodeAvailable() {
-        if (!recognizer.isReady(stream)) return
-
-        onTranscribing(true)
-        try {
-            while (recognizer.isReady(stream)) {
-                recognizer.decode(stream)
-            }
-        } finally {
-            onTranscribing(false)
+        while (recognizer.isReady(stream)) {
+            recognizer.decode(stream)
         }
     }
 

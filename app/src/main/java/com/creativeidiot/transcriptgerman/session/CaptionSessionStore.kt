@@ -11,6 +11,8 @@ data class CaptionLine(
     val id: Long,
     val text: String,
     val englishText: String? = null,
+    /** Live-partial English for a prefix of [text], shown until [englishText] arrives. */
+    val draftEnglishText: String? = null,
 )
 
 enum class CaptionSessionStatus {
@@ -41,9 +43,15 @@ data class CaptionSessionState(
     val lines: List<CaptionLine> = emptyList(),
     val partialText: String = "",
     val partialEnglishText: String? = null,
+    /** German hypothesis [partialEnglishText] was translated from; a prefix of [partialText]. */
+    val partialEnglishSource: String? = null,
     val activeBackend: AsrBackend? = null,
     val failure: CaptionFailure? = null,
-)
+) {
+    /** English covers only an older prefix of the live German while newer words translate. */
+    val partialEnglishLagging: Boolean
+        get() = partialEnglishText != null && partialEnglishSource != partialText
+}
 
 class CaptionSessionStore {
     private val nextId = AtomicLong(0)
@@ -57,6 +65,7 @@ class CaptionSessionStore {
                 status = CaptionSessionStatus.STARTING,
                 partialText = "",
                 partialEnglishText = null,
+                partialEnglishSource = null,
                 activeBackend = backend,
                 failure = null,
             )
@@ -124,8 +133,7 @@ class CaptionSessionStore {
                         CaptionSessionStatus.LISTENING
                     },
                     partialText = trimmed,
-                    partialEnglishText = null,
-                )
+                ).keepPartialEnglishIfStillPrefix()
             }
         }
     }
@@ -139,10 +147,13 @@ class CaptionSessionStore {
         if (source.isEmpty() || translated.isEmpty()) return
 
         _state.update { current ->
-            if (current.partialText != source) {
-                current
+            if (current.partialText.continuesHypothesis(source)) {
+                current.copy(
+                    partialEnglishText = translated,
+                    partialEnglishSource = source,
+                )
             } else {
-                current.copy(partialEnglishText = translated)
+                current
             }
         }
     }
@@ -151,11 +162,9 @@ class CaptionSessionStore {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return null
 
-        val line = CaptionLine(
-            id = nextId.getAndIncrement(),
-            text = trimmed,
-        )
+        val lineId = nextId.getAndIncrement()
         _state.update { current ->
+            val line = CaptionLine(id = lineId, text = trimmed).withLiveEnglish(current)
             current.copy(
                 status = if (current.status == CaptionSessionStatus.STOPPING) {
                     CaptionSessionStatus.STOPPING
@@ -165,9 +174,10 @@ class CaptionSessionStore {
                 lines = (current.lines + line).takeLast(MAX_LINES),
                 partialText = "",
                 partialEnglishText = null,
+                partialEnglishSource = null,
             )
         }
-        return line.id
+        return lineId
     }
 
     fun updateFinalTranslation(
@@ -183,7 +193,10 @@ class CaptionSessionStore {
                 current
             } else {
                 val updated = current.lines.toMutableList()
-                updated[index] = updated[index].copy(englishText = translated)
+                updated[index] = updated[index].copy(
+                    englishText = translated,
+                    draftEnglishText = null,
+                )
                 current.copy(lines = updated)
             }
         }
@@ -195,6 +208,7 @@ class CaptionSessionStore {
                 status = CaptionSessionStatus.STOPPING,
                 partialText = "",
                 partialEnglishText = null,
+                partialEnglishSource = null,
                 failure = failure,
             )
         }
@@ -206,6 +220,7 @@ class CaptionSessionStore {
                 status = CaptionSessionStatus.IDLE,
                 partialText = "",
                 partialEnglishText = null,
+                partialEnglishSource = null,
                 activeBackend = null,
                 failure = if (clearFailure) null else it.failure,
             )
@@ -220,3 +235,39 @@ class CaptionSessionStore {
         const val MAX_LINES = 200
     }
 }
+
+private fun CaptionSessionState.keepPartialEnglishIfStillPrefix(): CaptionSessionState {
+    val source = partialEnglishSource ?: return this
+    return if (partialText.continuesHypothesis(source)) {
+        this
+    } else {
+        copy(partialEnglishText = null, partialEnglishSource = null)
+    }
+}
+
+/**
+ * Carries the live English onto the finalized line so its height does not collapse while the final
+ * translation runs. An exact source match already is that final translation; a prefix match is
+ * only a draft that the final translation replaces.
+ */
+private fun CaptionLine.withLiveEnglish(session: CaptionSessionState): CaptionLine {
+    val english = session.partialEnglishText ?: return this
+    val source = session.partialEnglishSource ?: return this
+    return when {
+        source == text -> copy(englishText = english)
+        text.continuesHypothesis(source) -> copy(draftEnglishText = english)
+        else -> this
+    }
+}
+
+/**
+ * True when this German hypothesis extends [source]. Streaming ASR often revises only the
+ * punctuation at the end of its previous hypothesis ("gut?" -> "gut, wenn"), so trailing
+ * punctuation of [source] is ignored.
+ */
+internal fun String.continuesHypothesis(source: String): Boolean {
+    val stable = source.trimEnd { it.isWhitespace() || it in HYPOTHESIS_END_PUNCTUATION }
+    return stable.isNotEmpty() && startsWith(stable)
+}
+
+private const val HYPOTHESIS_END_PUNCTUATION = ".,;:!?…"

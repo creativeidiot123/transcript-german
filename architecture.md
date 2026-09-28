@@ -142,7 +142,9 @@ committed to CaptionSessionStore and submitted to the shared translation pipelin
 ### Nemotron 3.5
 
 NemotronRecognizer retains one OnlineRecognizer/OnlineStream, forces language=de, and publishes
-replaceable German partials plus endpoint finals.
+replaceable German partials plus endpoint finals. It does not toggle
+TRANSCRIBING per 100-ms decode chunk; live partials drive SPEECH_DETECTED instead, which avoids two
+extra session-state emissions per chunk.
 
 ### Canary 180M Flash
 
@@ -196,9 +198,20 @@ CaptionTranslationPipeline owns serialization of one non-thread-safe BergamotTra
 pipeline has a bounded command channel for finalized work and at most one pending live partial.
 Multiple partial submissions before translation catches up collapse to the newest source text.
 
+The worker owns a SentenceTranslationCache: German is split at sentence punctuation (not after
+ordinals, initials, or common abbreviations), each sentence is translated separately, and results
+are joined. Bergamot itself splits input with ssplit and translates sentences independently, so this
+preserves output while a growing live hypothesis only re-translates the sentences that changed. The
+cache is worker-confined, session-scoped, bounded to 64 entries (LRU), keyed by exact sentence text,
+and discarded with the pipeline.
+
 After any partial translation returns, CaptionSessionStore accepts it only if that German source is
-still the current partial. Final German lines receive stable line IDs and final translations update
-only the matching line.
+still a prefix of the current partial (trailing punctuation of the source is ignored because
+streaming ASR revises it). The store records the English source so the UI can dim English that lags
+the live German; German updates keep the English while it remains a prefix and drop it on
+divergence. On appendFinal the live English becomes the line's translation when its source matches
+exactly, or a draft shown dimmed until the final translation replaces it. Final German lines receive
+stable line IDs and final translations update only the matching line.
 
 On explicit user Stop, accepted audio drains, ASR finalization completes, then translation drains
 before the session becomes idle. On failure, the recognizer is closed first so asynchronous Gemini
