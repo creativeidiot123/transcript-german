@@ -244,7 +244,9 @@ class CaptionService : Service() {
                     "Gemini live transcription setup failed: reason=" +
                         failure.failure.name +
                         ", httpStatus=" +
-                        (failure.httpStatusCode?.toString() ?: "none"),
+                        (failure.httpStatusCode?.toString() ?: "none") +
+                        ", webSocketCloseCode=" +
+                        (failure.webSocketCloseCode?.toString() ?: "none"),
                 )
                 failSession(
                     if (failure.failure == GeminiLiveConnectionFailure.AUTHENTICATION) {
