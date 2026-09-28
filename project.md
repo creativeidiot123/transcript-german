@@ -184,6 +184,8 @@ and streams microphone audio to Google for transcription.
   transcription mode, and server automatic activity detection with 800 ms trailing silence.
 - Gemini audio contract: raw mono signed 16-bit little-endian PCM at 16 kHz, sent in the existing
   100-ms app audio chunks.
+- Gemini server messages arrive as binary WebSocket frames containing UTF-8 JSON. An invalid key is
+  rejected after the upgrade by a 1007 close whose reason mentions the API key.
 - Gemini auth policy for this app: a user-provided authorization key is sent only on the TLS
   WebSocket request. Google rejects legacy standard Gemini API keys as of September 2026. Google
   recommends ephemeral tokens for production client apps; this product intentionally uses a BYO

@@ -11,10 +11,12 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okio.ByteString.Companion.encodeUtf8
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GeminiLiveRecognizerTest {
@@ -104,6 +106,129 @@ class GeminiLiveRecognizerTest {
             client.dispatcher.executorService.shutdown()
         }
     }
+
+    @Test
+    fun binaryServerFramesCompleteSetupAndPublishTranscripts() = runBlocking {
+        val server = MockWebServer()
+        val client = OkHttpClient()
+        val interim = CompletableDeferred<String>()
+        val final = CompletableDeferred<String>()
+        var failed = false
+
+        server.enqueue(
+            MockResponse().withWebSocketUpgrade(
+                object : WebSocketListener() {
+                    override fun onClosing(
+                        webSocket: WebSocket,
+                        code: Int,
+                        reason: String,
+                    ) {
+                        webSocket.close(code, reason)
+                    }
+
+                    override fun onMessage(webSocket: WebSocket, text: String) {
+                        val root = JSONObject(text)
+                        val reply = when {
+                            root.has("setup") -> """{"setupComplete":{}}"""
+                            root.optJSONObject("realtimeInput")
+                                ?.has("audio") == true ->
+                                """{"serverContent":{"interimInputTranscription":{"text":"Hallo"}}}"""
+                            root.optJSONObject("realtimeInput")
+                                ?.optBoolean("audioStreamEnd") == true ->
+                                """{"serverContent":{"inputTranscription":{"text":"Hallo zusammen"}}}"""
+                            else -> return
+                        }
+                        webSocket.send(reply.encodeUtf8())
+                    }
+                },
+            ),
+        )
+        server.start()
+
+        val recognizer = try {
+            withContext(Dispatchers.IO) {
+                GeminiLiveRecognizer.connect(
+                    client = client,
+                    apiKey = "test-api-key",
+                    onPartial = { interim.complete(it) },
+                    onFinal = { final.complete(it) },
+                    onFailure = { failed = true },
+                    endpoint = server.url("/live"),
+                )
+            }
+        } catch (failure: Throwable) {
+            server.shutdown()
+            client.dispatcher.executorService.shutdown()
+            throw failure
+        }
+
+        try {
+            recognizer.accept(floatArrayOf(0.1f, -0.1f))
+            assertEquals("Hallo", withContext(Dispatchers.IO) { interim.await() })
+
+            withContext(Dispatchers.IO) {
+                recognizer.finish()
+            }
+            assertEquals("Hallo zusammen", withContext(Dispatchers.IO) { final.await() })
+            assertFalse(failed)
+        } finally {
+            recognizer.close()
+            server.shutdown()
+            client.connectionPool.evictAll()
+            client.dispatcher.executorService.shutdown()
+        }
+    }
+
+    @Test
+    fun setupClosedForInvalidKeyIsReportedAsAuthenticationFailure() = runBlocking {
+        val server = MockWebServer()
+        val client = OkHttpClient()
+
+        server.enqueue(
+            MockResponse().withWebSocketUpgrade(
+                object : WebSocketListener() {
+                    override fun onMessage(webSocket: WebSocket, text: String) {
+                        if (JSONObject(text).has("setup")) {
+                            webSocket.close(1007, "API key not valid. Please pass a valid API key.")
+                        }
+                    }
+                },
+            ),
+        )
+        server.start()
+
+        try {
+            val startedAt = System.nanoTime()
+            val failure = try {
+                withContext(Dispatchers.IO) {
+                    GeminiLiveRecognizer.connect(
+                        client = client,
+                        apiKey = "rejected-key",
+                        onPartial = {},
+                        onFinal = {},
+                        onFailure = {},
+                        endpoint = server.url("/live"),
+                    )
+                }
+                error("Expected Gemini authentication failure")
+            } catch (failure: GeminiLiveConnectionException) {
+                failure
+            }
+            val elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt)
+
+            assertEquals(
+                GeminiLiveConnectionFailure.AUTHENTICATION,
+                failure.failure,
+            )
+            assertEquals(1007, failure.closeCode)
+            assertTrue("setup close must fail fast, took ${elapsedMillis}ms", elapsedMillis < 5_000)
+        } finally {
+            server.shutdown()
+            client.connectionPool.evictAll()
+            client.dispatcher.executorService.shutdown()
+        }
+    }
+
     @Test
     fun rejectedApiKeyIsReportedAsAuthenticationFailure() = runBlocking {
         val server = MockWebServer()
