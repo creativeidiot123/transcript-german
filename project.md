@@ -154,8 +154,10 @@ and streams microphone audio to Google for transcription.
   d548e25b9bfe559aa274f361892dc4ed5d64743a.
 - Primeline recognizer model type: nemo_transducer, decoding: greedy_search.
 - Silero VAD asset: sherpa-onnx asr-models/silero_vad.onnx. Primeline and Canary use the same
-  conversation profile: threshold 0.5, 0.4-second minimum silence, 0.2-second minimum speech, and
-  10-second maximum speech duration before sherpa-onnx raises the VAD threshold.
+  hypersensitive conversation profile: threshold 0.3, 0.4-second minimum silence, 0.1-second
+  minimum speech, and 10-second maximum speech duration before sherpa-onnx raises the VAD
+  threshold. sherpa-onnx discards sub-threshold audio, so the low threshold keeps quiet/distant
+  speech and one-word replies at the cost of more noise segments reaching ASR.
 - Nemotron base model: nvidia/nemotron-3.5-asr-streaming-0.6b.
 - Nemotron sherpa-onnx 560-ms INT8 export revision:
   ab43d895f5985b1bbab8b6eac8607fcdc05343f3.
