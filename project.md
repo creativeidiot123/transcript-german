@@ -20,7 +20,7 @@ and streams microphone audio to Google for transcription.
    or Gemini 3.5 Transcribe Live. Nemotron is the default after process start. The picker is locked
    while any model download or caption session is active.
 2. **Prepare selected backend:** Primeline/Nemotron/Canary require their pinned local ASR bundle.
-   Gemini instead requires a user-provided Gemini authorization key saved in the app. Bergamot is required for
+   Gemini instead requires a user-provided Gemini API key saved in the app. Bergamot is required for
    all four backends. A failed/partial local model install is never reported ready.
 3. **Manage Gemini credential:** while idle, the user can save, replace, or remove the Gemini API
    key. The key is encrypted using an Android Keystore AES-GCM key and persisted in app-private
@@ -184,10 +184,10 @@ and streams microphone audio to Google for transcription.
   transcription mode, and server automatic activity detection with 800 ms trailing silence.
 - Gemini audio contract: raw mono signed 16-bit little-endian PCM at 16 kHz, sent in the existing
   100-ms app audio chunks.
-- Gemini auth policy for this app: a user-provided authorization key is sent only on the TLS
-  WebSocket request. Google rejects legacy standard Gemini API keys as of September 2026. Google
-  recommends ephemeral tokens for production client apps; this product intentionally uses a BYO
-  persisted authorization key per user request and exposes that cloud/privacy boundary in the UI.
+- Gemini auth policy for this app: a user-provided Gemini API key is sent only on the TLS
+  WebSocket request as the documented `key` query parameter. Google recommends ephemeral tokens
+  for production client apps; this product intentionally uses a BYO persisted API key per user
+  request and exposes that cloud/privacy boundary in the UI.
 - OkHttp runtime for Gemini WebSocket: 4.12.0.
 - Bergamot catalog model: de-en-base version 2, API 1, CC-BY-SA-4.0.
 - Bergamot archive SHA-256:
