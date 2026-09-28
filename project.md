@@ -82,7 +82,9 @@ and streams microphone audio to Google for transcription.
 - Translation scheduling/native model lifecycle: CaptionTranslationPipeline + BergamotTranslator,
   owned by the active CaptionService session.
 - Microphone/ASR/network session lifecycle: CaptionService.
-- Gemini Live WebSocket: GeminiLiveRecognizer, one socket per Gemini caption session.
+- Gemini Live WebSockets: GeminiLiveRecognizer decides which socket is current; each
+  GeminiLiveSocket owns one WebSocket. One current socket per Gemini caption session, plus at most
+  one replacement and one retiring socket during session rotation.
 - Runtime microphone permission launcher: MainActivity.
 - UI projection: CaptionViewModel.
 
@@ -97,10 +99,17 @@ and streams microphone audio to Google for transcription.
 - Stop is idempotent.
 - Audio uses a bounded queue of 64 100-ms chunks. Saturation is terminal because dropping chunks
   would make captions deceptively incomplete.
-- Gemini uses one WebSocket per session. Audio sends preserve queue order. The recognizer treats
-  an OkHttp outbound queue of 256 KiB as terminal backpressure so a stalled network cannot build an
-  unbounded/stale live-audio backlog. Async socket failures terminate the active session; the app
-  does not auto-reconnect or silently fall back to another recognizer.
+- Gemini sends audio to one current WebSocket at a time. Audio sends preserve queue order. The
+  recognizer treats an OkHttp outbound queue of 256 KiB as terminal backpressure so a stalled
+  network cannot build an unbounded/stale live-audio backlog. Async failures of the current socket
+  terminate the active session; the app does not reconnect after a failure or silently fall back to
+  another recognizer.
+- Gemini session rotation is planned, not failure recovery: 8 minutes after a socket opened (or
+  on a server goAway) the recognizer opens a replacement. Audio moves to it once it is ready and no
+  interim is pending, or unconditionally at 9.5 minutes / after goAway. The old socket receives
+  audioStreamEnd and gets five seconds to finalize its tail; a pending interim that never finalizes
+  is a visible terminal failure. A failed replacement handshake is retried after 10 seconds and
+  does not end the session.
 - Translation uses one serialized worker because the Bergamot model is not thread-safe. Final
   captions use a bounded ordered queue. Partial translation is conflated to the newest German
   hypothesis.
@@ -142,8 +151,9 @@ and streams microphone audio to Google for transcription.
 - CPU inference uses four ASR threads. Primeline and Canary additionally use one Silero VAD thread.
 - Bergamot translation is serialized through one model worker.
 - Gemini latency and availability depend on network/API conditions. Gemini 3.5 Transcribe Live
-  supports continuous Live transcription sessions for up to 10 minutes; a closed/expired session
-  stops visibly and requires Start again.
+  caps one Live transcription session at 10 minutes, so the app rotates sockets before the cap;
+  an unexpected server close still stops visibly and requires Start again. The Gemini setup
+  handshake overlaps Bergamot initialization instead of following it.
 - No claim is made yet about real-time factor, battery, thermals, memory pressure, network usage, or
   recognition/translation quality on arbitrary Android devices.
 
@@ -186,6 +196,7 @@ and streams microphone audio to Google for transcription.
   transcription mode, and server automatic activity detection with START_SENSITIVITY_HIGH,
   20 ms prefix padding, 800 ms trailing silence, and TURN_INCLUDES_ALL_INPUT turn coverage so
   speech around detected turn boundaries is transcribed instead of dropped until the user stops.
+  A server goAway message starts early session rotation.
 - Gemini audio contract: raw mono signed 16-bit little-endian PCM at 16 kHz, sent in the existing
   100-ms app audio chunks.
 - Gemini server messages arrive as binary WebSocket frames containing UTF-8 JSON. An invalid key is
@@ -240,11 +251,11 @@ background auto-start, automatic backend benchmarking, or automatic cloud/local 
 | --- | --- |
 | Core logic | JVM tests cover the Nemotron default backend, blank penalty, endpoint tuning and final tail-padding contract, ASR manifests, local VAD, cloud/local catalog separation, Gemini setup/PCM/transcript protocol, Bergamot verification, transcript pairing, and translation ordering. |
 | State transitions | JVM tests cover failure/stop/restart, partial replacement, stale-English rejection, final pairing, append, and clear transitions. |
-| Happy-path E2E | MockWebServer test covers Gemini WebSocket setup, API-key query wiring, audio send, interim callback, final callback, and explicit finish. Real Google + microphone remains **UNVERIFIED** until an Android device uses a valid user key. |
+| Happy-path E2E | MockWebServer tests cover Gemini WebSocket setup, API-key query wiring, audio send, interim callback, final callback, explicit finish, and socket rotation (quiet-point switch, pending-interim wait, forced switch, goAway, replacement retry, unfinalized retiring speech). Real Google + microphone remains **UNVERIFIED** until an Android device uses a valid user key. |
 | Persistence/process death | Local model markers are automated. Gemini key encryption/persistence uses real Android Keystore + SharedPreferences and remains **UNVERIFIED** until device/instrumentation execution. |
 | Failure/recovery | Missing/stale/invalid model installs are covered. MockWebServer verifies rejected Gemini keys map to authentication failure; setup/transport failure remains terminal. Real auth/quota/network recovery remains **UNVERIFIED** against Google. |
 | Cross-feature | Selected ASR + shared translator readiness gate Start; all four ASR paths feed one translation/session owner. |
-| Concurrency/duplicates | Shared model-download mutex, service first-wins, Gemini credential mutation/start gating, bounded audio/final translation queues, conflated partial translation, and one Gemini socket per session are structurally enforced/tested where platform-free. |
+| Concurrency/duplicates | Shared model-download mutex, service first-wins, Gemini credential mutation/start gating, bounded audio/final translation queues, conflated partial translation, and one current Gemini socket per session are structurally enforced/tested where platform-free. |
 | UI behavior | Compile/lint cover picker/key wiring; real secure-key entry, TalkBack, IME, and large-font behavior remain **UNVERIFIED** until instrumentation/device checks. |
 | Lifecycle/reboot | **UNVERIFIED** until service/microphone/native ASR/Bergamot/Gemini lifecycles are exercised on Android hardware/emulator. |
 | Regression | Primeline, Nemotron, Canary, and Gemini retain their pinned model/runtime paths; JVM tests pin the tuned local endpoint/VAD profiles and Gemini setup contract. |

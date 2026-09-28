@@ -96,5 +96,11 @@ class GeminiLiveProtocolTest {
         assertFalse(final.setupComplete)
         assertEquals(null, final.interimText)
         assertEquals("Guten Morgen", final.finalText)
+
+        val goAway = GeminiLiveProtocol.parseServerMessage(
+            """{"goAway":{"timeLeft":"10s"}}""",
+        )
+        assertTrue(goAway.goAway)
+        assertFalse(final.goAway)
     }
 }
