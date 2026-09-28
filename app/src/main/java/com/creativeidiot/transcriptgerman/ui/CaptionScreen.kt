@@ -270,11 +270,12 @@ private fun CaptionPair(
     pending: Boolean,
     isLive: Boolean,
 ) {
-    val englishAlpha by animateFloatAsState(
+    // Only the small English label marks trailing English; dimming the sentence itself flashed.
+    val englishLabelAlpha by animateFloatAsState(
         targetValue = if (english != null && !englishCurrent) STALE_ENGLISH_ALPHA else 1f,
         // Slow spring: a translation that catches up quickly barely dims instead of pulsing.
         animationSpec = spring(stiffness = Spring.StiffnessLow),
-        label = "englishAlpha",
+        label = "englishLabelAlpha",
     )
     val contentColor =
         if (isLive) {
@@ -315,8 +316,9 @@ private fun CaptionPair(
                 Text(
                     text = stringResource(R.string.caption_language_english),
                     style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.graphicsLayer { alpha = englishLabelAlpha },
                 )
-                Text(
+                ChangedWordsText(
                     text = english ?: if (pending) {
                         stringResource(R.string.translation_pending)
                     } else {
@@ -324,7 +326,6 @@ private fun CaptionPair(
                     },
                     style = MaterialTheme.typography.bodyLarge,
                     minLines = 2,
-                    modifier = Modifier.graphicsLayer { alpha = englishAlpha },
                 )
             }
         }
@@ -431,4 +432,4 @@ private fun Controls(
     }
 }
 
-private const val STALE_ENGLISH_ALPHA = 0.7f
+private const val STALE_ENGLISH_ALPHA = 0.5f

@@ -226,6 +226,10 @@ word. Final German lines receive stable line IDs and final translations update o
 line. appendFinal copies the last partial English into the new line as previewEnglishText; the final
 translation replaces and clears it, and the UI shows the preview only while translation is pending.
 
+The caption UI dims only the English label while English is stale. ChangedWordsText keeps the
+unchanged leading words of the English steady and fades in the rest; the previously shown text is
+UI-local (remembered per item, updated from SideEffect) and a first composition does not animate.
+
 On explicit user Stop, accepted audio drains, ASR finalization completes, then translation drains
 before the session becomes idle. On failure, the recognizer is closed first so asynchronous Gemini
 callbacks cannot append new German after the bilingual translation pipeline is cancelled; native
