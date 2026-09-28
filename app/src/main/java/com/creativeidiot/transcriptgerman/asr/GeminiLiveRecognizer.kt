@@ -15,6 +15,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okio.ByteString
 
 internal enum class GeminiLiveConnectionFailure {
     AUTHENTICATION,
@@ -24,6 +25,7 @@ internal enum class GeminiLiveConnectionFailure {
 internal class GeminiLiveConnectionException(
     val failure: GeminiLiveConnectionFailure = GeminiLiveConnectionFailure.CONNECTION,
     val httpStatusCode: Int? = null,
+    val closeCode: Int? = null,
 ) : IOException()
 
 private fun Response?.toGeminiConnectionFailure(): GeminiLiveConnectionFailure =
@@ -31,6 +33,21 @@ private fun Response?.toGeminiConnectionFailure(): GeminiLiveConnectionFailure =
         400, 401, 403 -> GeminiLiveConnectionFailure.AUTHENTICATION
         else -> GeminiLiveConnectionFailure.CONNECTION
     }
+
+// Google accepts the socket upgrade, then rejects an invalid key by closing
+// with 1007 and a reason such as "API key not valid" once it reads setup.
+private fun geminiCloseFailure(code: Int, reason: String): GeminiLiveConnectionFailure =
+    if (
+        (code == INVALID_PAYLOAD_CLOSE_CODE || code == POLICY_VIOLATION_CLOSE_CODE) &&
+        reason.contains("API key", ignoreCase = true)
+    ) {
+        GeminiLiveConnectionFailure.AUTHENTICATION
+    } else {
+        GeminiLiveConnectionFailure.CONNECTION
+    }
+
+private const val INVALID_PAYLOAD_CLOSE_CODE = 1007
+private const val POLICY_VIOLATION_CLOSE_CODE = 1008
 
 internal class GeminiLiveRecognizer private constructor(
     private val webSocket: WebSocket,
@@ -164,6 +181,16 @@ internal class GeminiLiveRecognizer private constructor(
                 }
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
+                    handleServerMessage(text)
+                }
+
+                // Gemini Live sends its JSON server messages, setupComplete included,
+                // as binary WebSocket frames.
+                override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                    handleServerMessage(bytes.utf8())
+                }
+
+                private fun handleServerMessage(text: String) {
                     val event = try {
                         GeminiLiveProtocol.parseServerMessage(text)
                     } catch (_: RuntimeException) {
@@ -195,6 +222,22 @@ internal class GeminiLiveRecognizer private constructor(
                         )
                     } else {
                         recognizerRef.get()?.signalFailure()
+                    }
+                }
+
+                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                    if (!setup.isCompleted) {
+                        setup.completeExceptionally(
+                            GeminiLiveConnectionException(
+                                failure = geminiCloseFailure(code, reason),
+                                closeCode = code,
+                            ),
+                        )
+                        return
+                    }
+                    val recognizer = recognizerRef.get() ?: return
+                    if (!recognizer.clientClosing.get()) {
+                        recognizer.signalFailure()
                     }
                 }
 
