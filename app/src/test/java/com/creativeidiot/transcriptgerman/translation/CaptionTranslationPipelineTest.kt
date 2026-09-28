@@ -45,6 +45,38 @@ class CaptionTranslationPipelineTest {
     }
 
     @Test
+    fun growingPartial_retranslatesOnlyChangedSentencesAndFinalReusesThem() = runTest {
+        val translator = FakeTranslator()
+        val partials = mutableListOf<String>()
+        val finals = mutableListOf<Pair<Long, String>>()
+
+        val pipeline = CaptionTranslationPipeline(
+            scope = this,
+            translator = translator,
+            onPartialTranslated = { _, english -> partials += english },
+            onFinalTranslated = { id, english -> finals += id to english },
+            onFailure = { error("translation should not fail") },
+        )
+
+        pipeline.submitPartial("Ja. Das stimmt")
+        advanceUntilIdle()
+        pipeline.submitPartial("Ja. Das stimmt. Wir")
+        advanceUntilIdle()
+        pipeline.submitFinal(3L, "Ja. Das stimmt. Wir")
+        pipeline.finishAndDrain()
+
+        assertEquals(
+            listOf("Ja.", "Das stimmt", "Das stimmt.", "Wir"),
+            translator.inputs,
+        )
+        assertEquals(
+            listOf("EN:Ja. EN:Das stimmt", "EN:Ja. EN:Das stimmt. EN:Wir"),
+            partials,
+        )
+        assertEquals(listOf(3L to "EN:Ja. EN:Das stimmt. EN:Wir"), finals)
+    }
+
+    @Test
     fun finalizedCaptionsAreTranslatedInSubmissionOrder() = runTest {
         val translator = FakeTranslator()
         val finals = mutableListOf<Pair<Long, String>>()

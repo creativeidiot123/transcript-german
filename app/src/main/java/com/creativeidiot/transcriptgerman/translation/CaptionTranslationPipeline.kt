@@ -34,6 +34,9 @@ internal class CaptionTranslationPipeline(
     private val pendingPartial = AtomicReference<Partial?>(null)
     private val commands = Channel<Command>(capacity = COMMAND_CAPACITY)
 
+    // Touched only by the worker below, which already serializes the non-thread-safe model.
+    private val sentences = SentenceTranslationCache(translator)
+
     private val worker: Job = scope.launch {
         try {
             for (command in commands) {
@@ -113,14 +116,14 @@ internal class CaptionTranslationPipeline(
     }
 
     private suspend fun translatePartial(partial: Partial) {
-        val english = translator.translateGermanToEnglish(partial.german).trim()
+        val english = sentences.translate(partial.german)
         check(english.isNotEmpty()) { "Translation returned blank output" }
         currentCoroutineContext().ensureActive()
         onPartialTranslated(partial.german, english)
     }
 
     private suspend fun translateFinal(command: Command.Final) {
-        val english = translator.translateGermanToEnglish(command.german).trim()
+        val english = sentences.translate(command.german)
         check(english.isNotEmpty()) { "Translation returned blank output" }
         currentCoroutineContext().ensureActive()
         onFinalTranslated(command.lineId, english)

@@ -54,8 +54,12 @@ and streams microphone audio to Google for transcription.
 - Listening: a persistent foreground-service notification is posted.
 - Primeline speech: finalized German appears after a VAD endpoint; English follows from the same
   finalized source.
-- Nemotron speech: current German partial text updates in place; English partial text follows only
-  the newest German hypothesis.
+- Nemotron speech: current German partial text updates in place; English partial text follows the
+  newest German hypothesis. While newer words translate, the previous English stays visible, dimmed,
+  as long as its German source is still a prefix of the live hypothesis (ignoring revised trailing
+  punctuation), so the live caption does not blank to "Translating…" on every word.
+- Live partial growth keeps the caption's bottom edge in view with an immediate scroll rather than
+  one restarted scroll animation per word; new caption items still animate into view.
 - Canary speech: finalized German appears after a VAD endpoint with punctuation enabled; English
   follows from the same finalized source.
 - Gemini speech: interim German text updates from Gemini Live; finalized Gemini input transcription
@@ -103,8 +107,13 @@ and streams microphone audio to Google for transcription.
   does not auto-reconnect or silently fall back to another recognizer.
 - Translation uses one serialized worker because the Bergamot model is not thread-safe. Final
   captions use a bounded ordered queue. Partial translation is conflated to the newest German
-  hypothesis.
-- A translated partial is committed only if its German source still equals the current partial.
+  hypothesis. The worker translates sentence by sentence through a session-scoped 64-entry LRU keyed
+  by exact German sentence text, so a growing hypothesis only re-translates changed sentences and a
+  final usually reuses its live translations.
+- A translated partial is committed only if its German source is still a prefix of the current
+  partial; it is marked lagging until its source equals the current partial. A finalized line keeps
+  the live English as a dimmed draft (or as its translation when the source matches exactly) until
+  the final translation replaces it.
 - On explicit user stop, final translations already accepted by the translation worker drain before
   the session is marked stopped.
 - Downloads are retried only by explicit user action. Gemini connection retry is a new Start action.
@@ -220,7 +229,9 @@ background auto-start, automatic backend benchmarking, or automatic cloud/local 
 - Uploading microphone audio when Primeline, Nemotron, or Canary is selected.
 - Persisting or logging a plaintext Gemini API key, exposing it through UI state, committing it to
   source/build config, or backing it up.
-- Attaching an English partial translated from an older German hypothesis to newer German text.
+- Presenting English translated from an older German hypothesis as the current translation of newer
+  German text. Lagging English is shown only for a prefix of the live German and is visibly dimmed;
+  English from a diverged hypothesis is dropped.
 - Reordering finalized English translations relative to their German source lines.
 - Silently dropping queued audio/finalized translation work.
 - Silently degrading a requested bilingual session to German-only after translation failure.
@@ -234,13 +245,13 @@ background auto-start, automatic backend benchmarking, or automatic cloud/local 
 
 | Category | MVP proof |
 | --- | --- |
-| Core logic | JVM tests cover the Nemotron default backend, blank penalty, endpoint tuning and final tail-padding contract, ASR manifests, local VAD, cloud/local catalog separation, Gemini setup/PCM/transcript protocol, Bergamot verification, transcript pairing, and translation ordering. |
-| State transitions | JVM tests cover failure/stop/restart, partial replacement, stale-English rejection, final pairing, append, and clear transitions. |
+| Core logic | JVM tests cover the Nemotron default backend, blank penalty, endpoint tuning and final tail-padding contract, ASR manifests, local VAD, cloud/local catalog separation, Gemini setup/PCM/transcript protocol, Bergamot verification, transcript pairing, translation ordering, German sentence splitting, and sentence-translation cache reuse/eviction. |
+| State transitions | JVM tests cover failure/stop/restart, partial replacement, lagging-English retention, diverged/stale-English rejection, draft-to-final English, final pairing, append, and clear transitions. |
 | Happy-path E2E | MockWebServer test covers Gemini WebSocket setup, API-key query wiring, audio send, interim callback, final callback, and explicit finish. Real Google + microphone remains **UNVERIFIED** until an Android device uses a valid user key. |
 | Persistence/process death | Local model markers are automated. Gemini key encryption/persistence uses real Android Keystore + SharedPreferences and remains **UNVERIFIED** until device/instrumentation execution. |
 | Failure/recovery | Missing/stale/invalid model installs are covered. MockWebServer verifies rejected Gemini keys map to authentication failure; setup/transport failure remains terminal. Real auth/quota/network recovery remains **UNVERIFIED** against Google. |
 | Cross-feature | Selected ASR + shared translator readiness gate Start; all four ASR paths feed one translation/session owner. |
 | Concurrency/duplicates | Shared model-download mutex, service first-wins, Gemini credential mutation/start gating, bounded audio/final translation queues, conflated partial translation, and one Gemini socket per session are structurally enforced/tested where platform-free. |
-| UI behavior | Compile/lint cover picker/key wiring; real secure-key entry, TalkBack, IME, and large-font behavior remain **UNVERIFIED** until instrumentation/device checks. |
+| UI behavior | Compile/lint cover picker/key wiring and the dimmed lagging-English/snap-follow caption rendering, whose on-device smoothness remains **UNVERIFIED**; real secure-key entry, TalkBack, IME, and large-font behavior remain **UNVERIFIED** until instrumentation/device checks. |
 | Lifecycle/reboot | **UNVERIFIED** until service/microphone/native ASR/Bergamot/Gemini lifecycles are exercised on Android hardware/emulator. |
 | Regression | Primeline, Nemotron, Canary, and Gemini retain their pinned model/runtime paths; JVM tests pin the tuned local endpoint/VAD profiles and Gemini setup contract. |

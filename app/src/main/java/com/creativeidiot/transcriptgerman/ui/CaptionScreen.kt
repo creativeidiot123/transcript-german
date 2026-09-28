@@ -1,6 +1,7 @@
 package com.creativeidiot.transcriptgerman.ui
 
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,6 +25,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -79,7 +81,11 @@ fun CaptionScreen(
                 newCaptionItems = newCaptionItems,
             )
         ) {
-            if (targetBottomOverflow != null) {
+            if (targetBottomOverflow != null && newCaptionItems == 0) {
+                // The live caption grew in place. Words arrive faster than a scroll animation
+                // settles, so restarting one per word made the list chase and wobble; snap instead.
+                listState.scrollBy(targetBottomOverflow.toFloat())
+            } else if (targetBottomOverflow != null) {
                 listState.animateScrollBy(targetBottomOverflow.toFloat())
             } else {
                 listState.animateScrollToItem(targetIndex)
@@ -186,6 +192,7 @@ fun CaptionScreen(
                                 CaptionPair(
                                     german = partialText,
                                     english = state.session.partialEnglishText,
+                                    englishLagging = state.session.partialEnglishLagging,
                                     pending = true,
                                     isLive = true,
                                 )
@@ -241,10 +248,13 @@ private fun CaptionPair(
     line: CaptionLine,
     translationPending: Boolean,
 ) {
+    val pending = line.englishText == null && translationPending
+    val draft = line.draftEnglishText.takeIf { pending }
     CaptionPair(
         german = line.text,
-        english = line.englishText,
-        pending = line.englishText == null && translationPending,
+        english = line.englishText ?: draft,
+        englishLagging = draft != null,
+        pending = pending,
         isLive = false,
     )
 }
@@ -253,6 +263,7 @@ private fun CaptionPair(
 private fun CaptionPair(
     german: String,
     english: String?,
+    englishLagging: Boolean,
     pending: Boolean,
     isLive: Boolean,
 ) {
@@ -303,12 +314,21 @@ private fun CaptionPair(
                         stringResource(R.string.translation_unavailable)
                     },
                     style = MaterialTheme.typography.bodyLarge,
+                    // Older English stays visible, dimmed, while newer German words translate, so
+                    // the card never collapses to the placeholder and back on every word.
+                    color = if (englishLagging) {
+                        contentColor.copy(alpha = LAGGING_ENGLISH_ALPHA)
+                    } else {
+                        Color.Unspecified
+                    },
                     minLines = 2,
                 )
             }
         }
     }
 }
+
+private const val LAGGING_ENGLISH_ALPHA = 0.6f
 
 @Composable
 private fun SessionStatus(state: CaptionUiState) {

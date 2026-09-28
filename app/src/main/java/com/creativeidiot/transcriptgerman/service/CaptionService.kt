@@ -351,7 +351,6 @@ class CaptionService : Service() {
             AsrBackend.NEMOTRON -> {
                 NemotronRecognizer(
                     modelDirectory = requireNotNull(modelDirectory),
-                    onTranscribing = store::markTranscribing,
                     onPartial = onPartial,
                     onFinal = onFinal,
                 )
