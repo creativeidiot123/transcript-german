@@ -11,6 +11,8 @@ data class CaptionLine(
     val id: Long,
     val text: String,
     val englishText: String? = null,
+    // Last live-partial English carried over at finalization; shown only until englishText lands.
+    val previewEnglishText: String? = null,
 )
 
 enum class CaptionSessionStatus {
@@ -41,9 +43,15 @@ data class CaptionSessionState(
     val lines: List<CaptionLine> = emptyList(),
     val partialText: String = "",
     val partialEnglishText: String? = null,
+    val partialEnglishSource: String? = null,
     val activeBackend: AsrBackend? = null,
     val failure: CaptionFailure? = null,
-)
+) {
+    // Older English stays visible while a newer German hypothesis is translated, but only
+    // counts as the partial's translation once its source matches the current German text.
+    val partialEnglishCurrent: Boolean
+        get() = partialEnglishText != null && partialEnglishSource == partialText
+}
 
 class CaptionSessionStore {
     private val nextId = AtomicLong(0)
@@ -57,6 +65,7 @@ class CaptionSessionStore {
                 status = CaptionSessionStatus.STARTING,
                 partialText = "",
                 partialEnglishText = null,
+                partialEnglishSource = null,
                 activeBackend = backend,
                 failure = null,
             )
@@ -115,6 +124,8 @@ class CaptionSessionStore {
             if (current.partialText == trimmed) {
                 current
             } else {
+                // Keep the last English (now stale) so the card does not flash back to pending.
+                val keepEnglish = trimmed.isNotEmpty()
                 current.copy(
                     status = if (current.status == CaptionSessionStatus.STOPPING) {
                         CaptionSessionStatus.STOPPING
@@ -124,7 +135,8 @@ class CaptionSessionStore {
                         CaptionSessionStatus.LISTENING
                     },
                     partialText = trimmed,
-                    partialEnglishText = null,
+                    partialEnglishText = current.partialEnglishText.takeIf { keepEnglish },
+                    partialEnglishSource = current.partialEnglishSource.takeIf { keepEnglish },
                 )
             }
         }
@@ -142,7 +154,10 @@ class CaptionSessionStore {
             if (current.partialText != source) {
                 current
             } else {
-                current.copy(partialEnglishText = translated)
+                current.copy(
+                    partialEnglishText = translated,
+                    partialEnglishSource = source,
+                )
             }
         }
     }
@@ -151,11 +166,13 @@ class CaptionSessionStore {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return null
 
-        val line = CaptionLine(
-            id = nextId.getAndIncrement(),
-            text = trimmed,
-        )
+        val lineId = nextId.getAndIncrement()
         _state.update { current ->
+            val line = CaptionLine(
+                id = lineId,
+                text = trimmed,
+                previewEnglishText = current.partialEnglishText,
+            )
             current.copy(
                 status = if (current.status == CaptionSessionStatus.STOPPING) {
                     CaptionSessionStatus.STOPPING
@@ -165,9 +182,10 @@ class CaptionSessionStore {
                 lines = (current.lines + line).takeLast(MAX_LINES),
                 partialText = "",
                 partialEnglishText = null,
+                partialEnglishSource = null,
             )
         }
-        return line.id
+        return lineId
     }
 
     fun updateFinalTranslation(
@@ -183,7 +201,10 @@ class CaptionSessionStore {
                 current
             } else {
                 val updated = current.lines.toMutableList()
-                updated[index] = updated[index].copy(englishText = translated)
+                updated[index] = updated[index].copy(
+                    englishText = translated,
+                    previewEnglishText = null,
+                )
                 current.copy(lines = updated)
             }
         }
@@ -195,6 +216,7 @@ class CaptionSessionStore {
                 status = CaptionSessionStatus.STOPPING,
                 partialText = "",
                 partialEnglishText = null,
+                partialEnglishSource = null,
                 failure = failure,
             )
         }
@@ -206,6 +228,7 @@ class CaptionSessionStore {
                 status = CaptionSessionStatus.IDLE,
                 partialText = "",
                 partialEnglishText = null,
+                partialEnglishSource = null,
                 activeBackend = null,
                 failure = if (clearFailure) null else it.failure,
             )

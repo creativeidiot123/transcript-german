@@ -2,8 +2,10 @@ package com.creativeidiot.transcriptgerman.ui
 
 import com.creativeidiot.transcriptgerman.session.CaptionLine
 import com.creativeidiot.transcriptgerman.session.CaptionSessionState
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -39,6 +41,20 @@ class CaptionScrollPolicyTest {
 
         assertFalse(partialTrigger == finalizedTrigger)
         assertFalse(finalizedTrigger == nextPartialTrigger)
+    }
+
+    @Test
+    fun finalizedLinePreview_showsOnlyWhileTranslationIsPending() {
+        val previewOnly = CaptionLine(
+            id = 1L,
+            text = "Guten Morgen.",
+            previewEnglishText = "Good morning",
+        )
+        val translated = previewOnly.copy(englishText = "Good morning.")
+
+        assertEquals("Good morning", captionLineEnglish(previewOnly, translationPending = true))
+        assertNull(captionLineEnglish(previewOnly, translationPending = false))
+        assertEquals("Good morning.", captionLineEnglish(translated, translationPending = false))
     }
 
     @Test
