@@ -15,7 +15,8 @@
     Bilingual session truth         CaptionSessionStore (process-local)
     Active-backend UI projection    CaptionSessionStore from CaptionService input
     Microphone/ASR lifecycle        CaptionService
-    Gemini socket lifecycle         GeminiLiveRecognizer owned by CaptionService session
+    Gemini session/rotation         GeminiLiveRecognizer owned by CaptionService session
+    Gemini WebSocket lifecycle      GeminiLiveSocket owned by GeminiLiveRecognizer
     Translation work lifecycle      CaptionTranslationPipeline owned by CaptionService session
     Bergamot native model           BergamotTranslator
     AudioRecord resource            AudioCapture
@@ -124,8 +125,10 @@ structured service scope and one session Job. Repeated Start while that job is a
 
 A session resolves the selected recognition dependency and shared Bergamot files before capture.
 For local backends this means a verified model directory. For Gemini this means a successfully
-decrypted API key and a completed Gemini Live setup handshake. Audio capture starts only after the
-selected recognizer and Bergamot translator initialize.
+decrypted API key and a completed Gemini Live setup handshake. The recognizer is created before
+Bergamot so Gemini's network handshake runs on OkHttp threads while the translator loads; setup is
+awaited after translator initialization. Audio capture starts only after the selected recognizer and
+Bergamot translator initialize.
 
 AudioCapture owns exactly one AudioRecord/capture thread. Audio chunks are 100 ms of 16 kHz mono
 PCM and enter a bounded 64-element channel. Saturation is terminal; audio is never silently dropped.
@@ -158,7 +161,9 @@ On Stop, VAD is flushed before the recognizer and translator are released.
 
 ### Gemini 3.5 Transcribe Live
 
-GeminiLiveRecognizer owns one OkHttp WebSocket for one caption session. It connects to Google's
+GeminiLiveRecognizer owns one Gemini caption session and decides which GeminiLiveSocket is
+current. Each GeminiLiveSocket owns one OkHttp WebSocket, its setup handshake, and that server
+session's interim/final state. Sockets connect to Google's
 Gemini Live v1beta BidiGenerateContent endpoint with the user API key as the documented TLS
 WebSocket query authentication parameter. No logging interceptor is installed and code never logs
 the request URL, key, response body, audio, or transcript.
@@ -185,10 +190,20 @@ the visible pending speech was committed. If audio was sent but no interim arriv
 recognizer gives the server up to two seconds to emit a final without turning silence/no-recognition
 into a false failure. Then final translation work drains and the WebSocket is closed.
 
-Async WebSocket/protocol failures disable further Gemini callbacks and signal one terminal session
-failure. The app does not auto-reconnect or switch recognizers inside the active session. Google's
-documented Live Transcribe session limit is up to 10 minutes; a server-closed session therefore
-becomes a visible terminal failure and can be restarted manually.
+Async WebSocket/protocol failures of the current socket disable further Gemini callbacks and signal
+one terminal session failure. The app does not reconnect after a failure or switch recognizers
+inside the active session.
+
+Google caps one Live Transcribe session at 10 minutes, so rotation is driven from accept() on the
+session worker (no extra timer or scope). Eight minutes after the current socket opened, or as soon
+as it receives goAway, the recognizer opens one replacement. Audio switches to the replacement once
+it is ready and the current socket has no pending interim, so the cut normally lands after a final;
+at 9.5 minutes, or after goAway, it switches regardless. The old socket becomes retiring: it gets
+audioStreamEnd and is closed after its final or after five seconds. If it still shows a pending
+interim at that point, the session fails visibly rather than dropping that speech. Stop waits for a
+retiring socket's final before finishing the current socket. A failed or timed-out replacement
+handshake is closed and retried after 10 seconds without ending the session; failures of a quiet
+retiring socket are ignored. The session clock is monotonic and injectable for tests.
 
 ### Shared translation stage
 

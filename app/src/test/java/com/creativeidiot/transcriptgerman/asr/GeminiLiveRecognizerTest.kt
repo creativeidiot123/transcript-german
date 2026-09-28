@@ -68,14 +68,14 @@ class GeminiLiveRecognizerTest {
 
         val recognizer = try {
             withContext(Dispatchers.IO) {
-                GeminiLiveRecognizer.connect(
+                GeminiLiveRecognizer.open(
                     client = client,
                     apiKey = "test-api-key",
                     onPartial = { interim.complete(it) },
                     onFinal = { final.complete(it) },
                     onFailure = { failed = true },
                     endpoint = server.url("/live"),
-                )
+                ).also { it.awaitSetup() }
             }
         } catch (failure: Throwable) {
             server.shutdown()
@@ -147,14 +147,14 @@ class GeminiLiveRecognizerTest {
 
         val recognizer = try {
             withContext(Dispatchers.IO) {
-                GeminiLiveRecognizer.connect(
+                GeminiLiveRecognizer.open(
                     client = client,
                     apiKey = "test-api-key",
                     onPartial = { interim.complete(it) },
                     onFinal = { final.complete(it) },
                     onFailure = { failed = true },
                     endpoint = server.url("/live"),
-                )
+                ).also { it.awaitSetup() }
             }
         } catch (failure: Throwable) {
             server.shutdown()
@@ -201,14 +201,14 @@ class GeminiLiveRecognizerTest {
             val startedAt = System.nanoTime()
             val failure = try {
                 withContext(Dispatchers.IO) {
-                    GeminiLiveRecognizer.connect(
+                    GeminiLiveRecognizer.open(
                         client = client,
                         apiKey = "rejected-key",
                         onPartial = {},
                         onFinal = {},
                         onFailure = {},
                         endpoint = server.url("/live"),
-                    )
+                    ).also { it.awaitSetup() }
                 }
                 error("Expected Gemini authentication failure")
             } catch (failure: GeminiLiveConnectionException) {
@@ -240,14 +240,14 @@ class GeminiLiveRecognizerTest {
         try {
             val failure = try {
                 withContext(Dispatchers.IO) {
-                    GeminiLiveRecognizer.connect(
+                    GeminiLiveRecognizer.open(
                         client = client,
                         apiKey = "rejected-key",
                         onPartial = {},
                         onFinal = {},
                         onFailure = {},
                         endpoint = server.url("/live"),
-                    )
+                    ).also { it.awaitSetup() }
                 }
                 error("Expected Gemini authentication failure")
             } catch (failure: GeminiLiveConnectionException) {
@@ -305,14 +305,14 @@ class GeminiLiveRecognizerTest {
         server.start()
 
         val recognizer = withContext(Dispatchers.IO) {
-            GeminiLiveRecognizer.connect(
+            GeminiLiveRecognizer.open(
                 client = client,
                 apiKey = "test-api-key",
                 onPartial = { error("no interim expected") },
                 onFinal = { final.complete(it) },
                 onFailure = { failed = true },
                 endpoint = server.url("/live"),
-            )
+            ).also { it.awaitSetup() }
         }
 
         try {

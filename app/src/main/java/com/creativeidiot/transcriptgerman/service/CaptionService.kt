@@ -183,6 +183,39 @@ class CaptionService : Service() {
                 return
             }
 
+            // Created before Bergamot so Gemini's TLS/setup handshake runs on OkHttp threads while
+            // the translator loads; Gemini setup is awaited after translator initialization.
+            recognizer = try {
+                createRecognizer(
+                    backend = backend,
+                    modelDirectory = modelDirectory,
+                    geminiApiKey = geminiApiKey,
+                    onPartial = { german ->
+                        store.updatePartial(german)
+                        if (translationPipeline?.submitPartial(german) == false) {
+                            signalTerminalFailure(CaptionFailure.TRANSLATION)
+                        }
+                    },
+                    onFinal = { german ->
+                        val lineId = store.appendFinal(german)
+                        if (
+                            lineId != null &&
+                            translationPipeline?.submitFinal(lineId, german) == false
+                        ) {
+                            signalTerminalFailure(CaptionFailure.TRANSLATION)
+                        }
+                    },
+                )
+            } catch (failure: RuntimeException) {
+                Log.e(
+                    TAG,
+                    "ASR initialization failed for " + backend.name +
+                        ": " + failure.javaClass.simpleName,
+                )
+                failSession(CaptionFailure.ASR_INITIALIZATION)
+                return
+            }
+
             val translator = try {
                 BergamotTranslator(
                     context = applicationContext,
@@ -217,53 +250,14 @@ class CaptionService : Service() {
                 },
             )
 
-            recognizer = try {
-                createRecognizer(
-                    backend = backend,
-                    modelDirectory = modelDirectory,
-                    geminiApiKey = geminiApiKey,
-                    onPartial = { german ->
-                        store.updatePartial(german)
-                        if (translationPipeline?.submitPartial(german) == false) {
-                            signalTerminalFailure(CaptionFailure.TRANSLATION)
-                        }
-                    },
-                    onFinal = { german ->
-                        val lineId = store.appendFinal(german)
-                        if (
-                            lineId != null &&
-                            translationPipeline?.submitFinal(lineId, german) == false
-                        ) {
-                            signalTerminalFailure(CaptionFailure.TRANSLATION)
-                        }
-                    },
-                )
-            } catch (failure: GeminiLiveConnectionException) {
-                Log.e(
-                    TAG,
-                    "Gemini live transcription setup failed: reason=" +
-                        failure.failure.name +
-                        ", httpStatus=" +
-                        (failure.httpStatusCode?.toString() ?: "none") +
-                        ", closeCode=" +
-                        (failure.closeCode?.toString() ?: "none"),
-                )
-                failSession(
-                    if (failure.failure == GeminiLiveConnectionFailure.AUTHENTICATION) {
-                        CaptionFailure.GEMINI_AUTHENTICATION
-                    } else {
-                        CaptionFailure.GEMINI_CONNECTION
-                    },
-                )
-                return
-            } catch (failure: RuntimeException) {
-                Log.e(
-                    TAG,
-                    "ASR initialization failed for " + backend.name +
-                        ": " + failure.javaClass.simpleName,
-                )
-                failSession(CaptionFailure.ASR_INITIALIZATION)
-                return
+            if (recognizer is GeminiLiveRecognizer) {
+                try {
+                    recognizer.awaitSetup()
+                } catch (failure: GeminiLiveConnectionException) {
+                    logGeminiFailure("Gemini live transcription setup failed", failure)
+                    failSession(failure.toCaptionFailure())
+                    return
+                }
             }
 
             capture = AudioCapture(
@@ -331,7 +325,7 @@ class CaptionService : Service() {
         }
     }
 
-    private suspend fun createRecognizer(
+    private fun createRecognizer(
         backend: AsrBackend,
         modelDirectory: File?,
         geminiApiKey: String?,
@@ -367,17 +361,36 @@ class CaptionService : Service() {
             }
 
             AsrBackend.GEMINI -> {
-                GeminiLiveRecognizer.connect(
+                GeminiLiveRecognizer.open(
                     client = container.geminiHttpClient,
                     apiKey = requireNotNull(geminiApiKey),
                     onPartial = onPartial,
                     onFinal = onFinal,
-                    onFailure = {
-                        Log.e(TAG, "Gemini live transcription stream failed")
-                        signalTerminalFailure(CaptionFailure.GEMINI_CONNECTION)
+                    onFailure = { failure ->
+                        logGeminiFailure("Gemini live transcription stream failed", failure)
+                        signalTerminalFailure(failure.toCaptionFailure())
                     },
                 )
             }
+        }
+
+    private fun logGeminiFailure(message: String, failure: GeminiLiveConnectionException) {
+        Log.e(
+            TAG,
+            message + ": reason=" +
+                failure.failure.name +
+                ", httpStatus=" +
+                (failure.httpStatusCode?.toString() ?: "none") +
+                ", closeCode=" +
+                (failure.closeCode?.toString() ?: "none"),
+        )
+    }
+
+    private fun GeminiLiveConnectionException.toCaptionFailure(): CaptionFailure =
+        if (failure == GeminiLiveConnectionFailure.AUTHENTICATION) {
+            CaptionFailure.GEMINI_AUTHENTICATION
+        } else {
+            CaptionFailure.GEMINI_CONNECTION
         }
 
     private fun signalTerminalFailure(failure: CaptionFailure) {

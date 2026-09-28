@@ -1,96 +1,100 @@
 package com.creativeidiot.transcriptgerman.asr
 
-import com.creativeidiot.transcriptgerman.gemini.GeminiLiveEvent
 import com.creativeidiot.transcriptgerman.gemini.GeminiLiveProtocol
-import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.WebSocket
-import okhttp3.WebSocketListener
-import okio.ByteString
 
-internal enum class GeminiLiveConnectionFailure {
-    AUTHENTICATION,
-    CONNECTION,
-}
-
-internal class GeminiLiveConnectionException(
-    val failure: GeminiLiveConnectionFailure = GeminiLiveConnectionFailure.CONNECTION,
-    val httpStatusCode: Int? = null,
-    val closeCode: Int? = null,
-) : IOException()
-
-private fun Response?.toGeminiConnectionFailure(): GeminiLiveConnectionFailure =
-    when (this?.code) {
-        400, 401, 403 -> GeminiLiveConnectionFailure.AUTHENTICATION
-        else -> GeminiLiveConnectionFailure.CONNECTION
-    }
-
-// Google accepts the socket upgrade, then rejects an invalid key by closing
-// with 1007 and a reason such as "API key not valid" once it reads setup.
-private fun geminiCloseFailure(code: Int, reason: String): GeminiLiveConnectionFailure =
-    if (
-        (code == INVALID_PAYLOAD_CLOSE_CODE || code == POLICY_VIOLATION_CLOSE_CODE) &&
-        reason.contains("API key", ignoreCase = true)
-    ) {
-        GeminiLiveConnectionFailure.AUTHENTICATION
-    } else {
-        GeminiLiveConnectionFailure.CONNECTION
-    }
-
-private const val INVALID_PAYLOAD_CLOSE_CODE = 1007
-private const val POLICY_VIOLATION_CLOSE_CODE = 1008
-
+/**
+ * One Gemini caption session. Google caps a Live Transcribe session at 10 minutes, so the
+ * recognizer opens a replacement socket before that cap and moves audio to it at a quiet point
+ * (no pending interim), then lets the old socket finalize its tail. accept, finish, and close run
+ * on the caption session worker; socket callbacks arrive on OkHttp threads.
+ */
 internal class GeminiLiveRecognizer private constructor(
-    private val webSocket: WebSocket,
+    private val client: OkHttpClient,
+    private val url: HttpUrl,
     private val onPartial: (String) -> Unit,
     private val onFinal: (String) -> Unit,
-    private val onFailure: () -> Unit,
+    private val onFailure: (GeminiLiveConnectionException) -> Unit,
+    private val nowMillis: () -> Long,
 ) : CaptionRecognizer {
-    private val acceptingEvents = AtomicBoolean(true)
-    private val clientClosing = AtomicBoolean(false)
-    private val failureSignaled = AtomicBoolean(false)
-    private val latestPartial = AtomicReference("")
-    private val audioSinceLastFinal = AtomicBoolean(false)
-    private val finalizationWaiter =
-        AtomicReference<CompletableDeferred<Unit>?>(null)
+    private val closed = AtomicBoolean(false)
+    private val failed = AtomicBoolean(false)
+
+    @Volatile
+    private var started = false
+
+    @Volatile
+    private var current: GeminiLiveSocket? = null
+    private var currentOpenedAt = 0L
+
+    @Volatile
+    private var replacement: GeminiLiveSocket? = null
+    private var replacementOpenedAt = 0L
+    private var nextReplacementAt = 0L
+
+    @Volatile
+    private var retiring: GeminiLiveSocket? = null
+    private var retiringFinal: CompletableDeferred<Unit>? = null
+    private var retiringDeadline = 0L
+
+    /** Waits for the first socket's setup handshake; throws its connection failure. */
+    suspend fun awaitSetup() {
+        val socket = requireNotNull(current)
+        try {
+            val ready = withTimeoutOrNull(CONNECT_TIMEOUT_MILLIS) {
+                socket.awaitSetup()
+                true
+            } == true
+            if (!ready) throw GeminiLiveConnectionException()
+        } catch (failure: GeminiLiveConnectionException) {
+            close()
+            throw failure
+        } catch (cancelled: CancellationException) {
+            close()
+            throw cancelled
+        }
+        started = true
+    }
 
     override fun accept(samples: FloatArray) {
-        check(!clientClosing.get()) { "Recognizer is closed" }
-        if (!acceptingEvents.get()) return
+        check(!closed.get()) { "Recognizer is closed" }
+        if (failed.get()) return
 
-        if (webSocket.queueSize() >= MAX_WEB_SOCKET_QUEUE_BYTES) {
-            signalFailure()
-            return
-        }
+        rotateIfDue(nowMillis())
+        if (failed.get()) return
 
-        audioSinceLastFinal.set(true)
-        if (!webSocket.send(GeminiLiveProtocol.audioMessage(samples))) {
-            signalFailure()
+        if (!requireNotNull(current).send(GeminiLiveProtocol.audioMessage(samples))) {
+            signalFailure(GeminiLiveConnectionException())
         }
     }
 
     override suspend fun finish() {
-        if (clientClosing.get() || !acceptingEvents.get()) return
+        if (closed.get() || failed.get()) return
 
-        val hasUnfinalizedAudio = audioSinceLastFinal.get()
-        val shouldRequireFinal = latestPartial.get().isNotBlank()
-        val waiter = CompletableDeferred<Unit>()
-        if (hasUnfinalizedAudio) {
-            finalizationWaiter.set(waiter)
+        replacement?.close()
+        replacement = null
+
+        retiring?.let { old ->
+            val remaining = (retiringDeadline - nowMillis()).coerceAtLeast(0L)
+            val finalized = awaitFinal(requireNotNull(retiringFinal), remaining)
+            if (!finalized && old.hasPendingPartial) {
+                throw GeminiLiveConnectionException()
+            }
+            retire(old)
         }
 
-        if (!webSocket.send(GeminiLiveProtocol.audioStreamEndMessage())) {
-            finalizationWaiter.compareAndSet(waiter, null)
-            signalFailure()
+        val socket = requireNotNull(current)
+        val hasUnfinalizedAudio = socket.hasUnfinalizedAudio
+        val shouldRequireFinal = socket.hasPendingPartial
+        val waiter = socket.endAudio()
+        if (waiter == null) {
+            signalFailure(GeminiLiveConnectionException())
             throw GeminiLiveConnectionException()
         }
 
@@ -101,195 +105,160 @@ internal class GeminiLiveRecognizer private constructor(
                 } else {
                     QUIET_FINALIZATION_GRACE_MILLIS
                 }
-            val finalized =
-                withTimeoutOrNull(timeoutMillis) {
-                    waiter.await()
-                    true
-                } == true
-            finalizationWaiter.compareAndSet(waiter, null)
-
-            if (shouldRequireFinal && !finalized) {
+            if (!awaitFinal(waiter, timeoutMillis) && shouldRequireFinal) {
                 throw GeminiLiveConnectionException()
             }
         }
     }
 
     override fun close() {
-        if (!clientClosing.compareAndSet(false, true)) return
+        if (!closed.compareAndSet(false, true)) return
 
-        acceptingEvents.set(false)
-        finalizationWaiter.getAndSet(null)?.cancel()
-        if (!webSocket.close(NORMAL_CLOSE_CODE, "caption session finished")) {
-            webSocket.cancel()
-        }
+        current?.close()
+        replacement?.close()
+        retiring?.close()
     }
 
-    private fun handleEvent(event: GeminiLiveEvent) {
-        if (!acceptingEvents.get()) return
-
-        event.interimText?.let { text ->
-            val normalized = text.trim()
-            val previous = latestPartial.getAndSet(normalized)
-            if (normalized != previous) {
-                onPartial(normalized)
+    private fun rotateIfDue(now: Long) {
+        retiring?.let { old ->
+            val waiter = requireNotNull(retiringFinal)
+            if (!waiter.isCompleted && now < retiringDeadline) return
+            val finalized = waiter.isCompleted && !waiter.isCancelled
+            if (!finalized && old.hasPendingPartial) {
+                signalFailure(GeminiLiveConnectionException())
+                return
             }
+            retire(old)
         }
 
-        event.finalText?.let { text ->
-            val normalized = text.trim()
-            if (normalized.isNotEmpty()) {
-                latestPartial.set("")
-                audioSinceLastFinal.set(false)
-                onFinal(normalized)
-                finalizationWaiter.getAndSet(null)?.complete(Unit)
+        val active = requireNotNull(current)
+        val age = now - currentOpenedAt
+        if (age < SESSION_ROTATE_AFTER_MILLIS && !active.goAwayReceived) return
+
+        val next = replacement
+        if (next == null) {
+            if (now >= nextReplacementAt) {
+                replacement = openSocket()
+                replacementOpenedAt = now
             }
+            return
+        }
+
+        if (next.isFailed || (!next.isReady && now - replacementOpenedAt >= CONNECT_TIMEOUT_MILLIS)) {
+            next.close()
+            replacement = null
+            nextReplacementAt = now + REPLACEMENT_RETRY_DELAY_MILLIS
+            return
+        }
+
+        val mustSwitch = age >= SESSION_FORCE_SWITCH_AFTER_MILLIS || active.goAwayReceived
+        if (next.isReady && (!active.hasPendingPartial || mustSwitch)) {
+            switchTo(next, now)
         }
     }
 
-    private fun signalFailure() {
-        if (clientClosing.get()) return
+    private fun switchTo(next: GeminiLiveSocket, now: Long) {
+        val old = requireNotNull(current)
+        val hadPendingPartial = old.hasPendingPartial
 
-        acceptingEvents.set(false)
-        finalizationWaiter.getAndSet(null)?.cancel()
-        if (failureSignaled.compareAndSet(false, true)) {
-            onFailure()
+        retiring = old
+        current = next
+        currentOpenedAt = replacementOpenedAt
+        replacement = null
+
+        val waiter = old.endAudio()
+        if (waiter == null) {
+            if (hadPendingPartial) {
+                signalFailure(GeminiLiveConnectionException())
+            } else {
+                retire(old)
+            }
+            return
+        }
+        retiringFinal = waiter
+        retiringDeadline = now + FINALIZATION_TIMEOUT_MILLIS
+    }
+
+    private fun retire(old: GeminiLiveSocket) {
+        old.close()
+        retiring = null
+        retiringFinal = null
+    }
+
+    private fun openSocket(): GeminiLiveSocket =
+        GeminiLiveSocket.open(
+            client = client,
+            url = url,
+            onPartial = { text -> if (!failed.get()) onPartial(text) },
+            onFinal = { text -> if (!failed.get()) onFinal(text) },
+            onFailure = ::onSocketFailure,
+        )
+
+    private fun onSocketFailure(socket: GeminiLiveSocket, failure: GeminiLiveConnectionException) {
+        when {
+            // Rotation drops a failed replacement and retries it later.
+            socket === replacement -> Unit
+            // A quiet retiring socket has nothing left to deliver.
+            socket === retiring -> if (socket.hasPendingPartial) signalFailure(failure)
+            // Before awaitSetup returns, the first socket's failure is thrown from there.
+            socket === current && started -> signalFailure(failure)
         }
     }
+
+    private fun signalFailure(failure: GeminiLiveConnectionException) {
+        if (closed.get()) return
+        if (failed.compareAndSet(false, true)) {
+            onFailure(failure)
+        }
+    }
+
+    private suspend fun awaitFinal(
+        waiter: CompletableDeferred<Unit>,
+        timeoutMillis: Long,
+    ): Boolean =
+        withTimeoutOrNull(timeoutMillis) {
+            waiter.join()
+            !waiter.isCancelled
+        } == true
 
     companion object {
-        suspend fun connect(
+        /**
+         * Starts the first socket without waiting for setup, so the caller can overlap the
+         * network handshake with other initialization before calling [awaitSetup].
+         */
+        fun open(
             client: OkHttpClient,
             apiKey: String,
             onPartial: (String) -> Unit,
             onFinal: (String) -> Unit,
-            onFailure: () -> Unit,
+            onFailure: (GeminiLiveConnectionException) -> Unit,
             endpoint: HttpUrl = GeminiLiveProtocol.ENDPOINT.toHttpUrl(),
+            nowMillis: () -> Long = { System.nanoTime() / 1_000_000L },
         ): GeminiLiveRecognizer {
-            val setup = CompletableDeferred<Unit>()
-            val recognizerRef = AtomicReference<GeminiLiveRecognizer?>()
-
-            val url = endpoint
-                .newBuilder()
-                .addQueryParameter("key", apiKey)
-                .build()
-
-            val listener = object : WebSocketListener() {
-                override fun onOpen(webSocket: WebSocket, response: Response) {
-                    if (!webSocket.send(GeminiLiveProtocol.setupMessage())) {
-                        setup.completeExceptionally(GeminiLiveConnectionException())
-                    }
-                }
-
-                override fun onMessage(webSocket: WebSocket, text: String) {
-                    handleServerMessage(text)
-                }
-
-                // Gemini Live sends its JSON server messages, setupComplete included,
-                // as binary WebSocket frames.
-                override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-                    handleServerMessage(bytes.utf8())
-                }
-
-                private fun handleServerMessage(text: String) {
-                    val event = try {
-                        GeminiLiveProtocol.parseServerMessage(text)
-                    } catch (_: RuntimeException) {
-                        if (!setup.isCompleted) {
-                            setup.completeExceptionally(GeminiLiveConnectionException())
-                        } else {
-                            recognizerRef.get()?.signalFailure()
-                        }
-                        return
-                    }
-
-                    if (event.setupComplete) {
-                        setup.complete(Unit)
-                    }
-                    recognizerRef.get()?.handleEvent(event)
-                }
-
-                override fun onFailure(
-                    webSocket: WebSocket,
-                    throwable: Throwable,
-                    response: Response?,
-                ) {
-                    if (!setup.isCompleted) {
-                        setup.completeExceptionally(
-                            GeminiLiveConnectionException(
-                                failure = response.toGeminiConnectionFailure(),
-                                httpStatusCode = response?.code,
-                            ),
-                        )
-                    } else {
-                        recognizerRef.get()?.signalFailure()
-                    }
-                }
-
-                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-                    if (!setup.isCompleted) {
-                        setup.completeExceptionally(
-                            GeminiLiveConnectionException(
-                                failure = geminiCloseFailure(code, reason),
-                                closeCode = code,
-                            ),
-                        )
-                        return
-                    }
-                    val recognizer = recognizerRef.get() ?: return
-                    if (!recognizer.clientClosing.get()) {
-                        recognizer.signalFailure()
-                    }
-                }
-
-                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    val recognizer = recognizerRef.get() ?: return
-                    if (!recognizer.clientClosing.get()) {
-                        recognizer.signalFailure()
-                    }
-                }
-            }
-
-            val webSocket = client.newWebSocket(
-                Request.Builder()
-                    .url(url)
-                    .build(),
-                listener,
-            )
             val recognizer = GeminiLiveRecognizer(
-                webSocket = webSocket,
+                client = client,
+                url = endpoint
+                    .newBuilder()
+                    .addQueryParameter("key", apiKey)
+                    .build(),
                 onPartial = onPartial,
                 onFinal = onFinal,
                 onFailure = onFailure,
+                nowMillis = nowMillis,
             )
-            recognizerRef.set(recognizer)
-
-            try {
-                val connected = withTimeoutOrNull(CONNECT_TIMEOUT_MILLIS) {
-                    setup.await()
-                    true
-                } == true
-                if (!connected) {
-                    recognizer.close()
-                    throw GeminiLiveConnectionException()
-                }
-            } catch (cancelled: CancellationException) {
-                recognizer.close()
-                throw cancelled
-            } catch (failure: GeminiLiveConnectionException) {
-                recognizer.close()
-                throw failure
-            } catch (_: IOException) {
-                recognizer.close()
-                throw GeminiLiveConnectionException()
-            }
-
+            recognizer.currentOpenedAt = nowMillis()
+            recognizer.current = recognizer.openSocket()
             return recognizer
         }
 
         private const val CONNECT_TIMEOUT_MILLIS = 20_000L
         private const val FINALIZATION_TIMEOUT_MILLIS = 5_000L
         private const val QUIET_FINALIZATION_GRACE_MILLIS = 2_000L
-        private const val MAX_WEB_SOCKET_QUEUE_BYTES = 256L * 1024L
-        private const val NORMAL_CLOSE_CODE = 1000
+
+        // Google caps a Live Transcribe session at 10 minutes. Start the replacement early
+        // enough to wait for a quiet point and to retry a failed replacement handshake.
+        internal const val SESSION_ROTATE_AFTER_MILLIS = 8L * 60_000L
+        internal const val SESSION_FORCE_SWITCH_AFTER_MILLIS = 9L * 60_000L + 30_000L
+        internal const val REPLACEMENT_RETRY_DELAY_MILLIS = 10_000L
     }
 }
