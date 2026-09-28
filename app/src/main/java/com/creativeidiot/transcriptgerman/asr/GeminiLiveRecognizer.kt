@@ -202,7 +202,7 @@ internal class GeminiLiveRecognizer private constructor(
 
                 override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
                     handleServerClose(code)
-                    webSocket.close(code, null)
+                    webSocket.close(NORMAL_CLOSE_CODE, null)
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
