@@ -181,7 +181,9 @@ and streams microphone audio to Google for transcription.
   and model-defined feature/normalization metadata.
 - Gemini model: gemini-3.5-transcribe-live through the Gemini Live v1beta BidiGenerateContent
   WebSocket endpoint, response modality TEXT, input transcription language code de-DE, VERBATIM
-  transcription mode, and server automatic activity detection with 800 ms trailing silence.
+  transcription mode, and server automatic activity detection with START_SENSITIVITY_HIGH,
+  20 ms prefix padding, 800 ms trailing silence, and TURN_INCLUDES_ALL_INPUT turn coverage so
+  speech around detected turn boundaries is transcribed instead of dropped until the user stops.
 - Gemini audio contract: raw mono signed 16-bit little-endian PCM at 16 kHz, sent in the existing
   100-ms app audio chunks.
 - Gemini server messages arrive as binary WebSocket frames containing UTF-8 JSON. An invalid key is
