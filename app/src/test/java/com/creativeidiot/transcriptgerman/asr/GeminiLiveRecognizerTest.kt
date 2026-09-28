@@ -5,6 +5,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.Response
 import okhttp3.WebSocket
@@ -134,6 +135,55 @@ class GeminiLiveRecognizerTest {
                 failure.failure,
             )
             assertEquals(401, failure.httpStatusCode)
+        } finally {
+            server.shutdown()
+            client.connectionPool.evictAll()
+            client.dispatcher.executorService.shutdown()
+        }
+    }
+
+    @Test
+    fun serverCloseBeforeSetupCompleteFailsImmediately() = runBlocking {
+        val server = MockWebServer()
+        val client = OkHttpClient()
+
+        server.enqueue(
+            MockResponse().withWebSocketUpgrade(
+                object : WebSocketListener() {
+                    override fun onMessage(webSocket: WebSocket, text: String) {
+                        if (JSONObject(text).has("setup")) {
+                            webSocket.close(1008, "setup rejected")
+                        }
+                    }
+                },
+            ),
+        )
+        server.start()
+
+        try {
+            val failure = try {
+                withTimeout(2_000) {
+                    withContext(Dispatchers.IO) {
+                        GeminiLiveRecognizer.connect(
+                            client = client,
+                            apiKey = "test-api-key",
+                            onPartial = {},
+                            onFinal = {},
+                            onFailure = {},
+                            endpoint = server.url("/live"),
+                        )
+                    }
+                }
+                error("Expected Gemini setup rejection")
+            } catch (failure: GeminiLiveConnectionException) {
+                failure
+            }
+
+            assertEquals(
+                GeminiLiveConnectionFailure.SETUP_REJECTED,
+                failure.failure,
+            )
+            assertEquals(1008, failure.webSocketCloseCode)
         } finally {
             server.shutdown()
             client.connectionPool.evictAll()

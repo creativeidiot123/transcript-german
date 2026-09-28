@@ -18,12 +18,14 @@ import okhttp3.WebSocketListener
 
 internal enum class GeminiLiveConnectionFailure {
     AUTHENTICATION,
+    SETUP_REJECTED,
     CONNECTION,
 }
 
 internal class GeminiLiveConnectionException(
     val failure: GeminiLiveConnectionFailure = GeminiLiveConnectionFailure.CONNECTION,
     val httpStatusCode: Int? = null,
+    val webSocketCloseCode: Int? = null,
 ) : IOException()
 
 private fun Response?.toGeminiConnectionFailure(): GeminiLiveConnectionFailure =
@@ -198,10 +200,28 @@ internal class GeminiLiveRecognizer private constructor(
                     }
                 }
 
+                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                    handleServerClose(code)
+                    webSocket.close(NORMAL_CLOSE_CODE, null)
+                }
+
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    val recognizer = recognizerRef.get() ?: return
-                    if (!recognizer.clientClosing.get()) {
-                        recognizer.signalFailure()
+                    handleServerClose(code)
+                }
+
+                private fun handleServerClose(code: Int) {
+                    val recognizer = recognizerRef.get()
+                    if (recognizer?.clientClosing?.get() == true) return
+
+                    if (!setup.isCompleted) {
+                        setup.completeExceptionally(
+                            GeminiLiveConnectionException(
+                                failure = GeminiLiveConnectionFailure.SETUP_REJECTED,
+                                webSocketCloseCode = code,
+                            ),
+                        )
+                    } else {
+                        recognizer?.signalFailure()
                     }
                 }
             }
