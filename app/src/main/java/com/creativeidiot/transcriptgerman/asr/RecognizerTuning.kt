@@ -5,13 +5,15 @@ import com.k2fsa.sherpa.onnx.EndpointRule
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig
 import com.k2fsa.sherpa.onnx.VadModelConfig
 
+// Hypersensitive: sherpa-onnx discards audio the VAD scores below threshold, so a low
+// threshold and short minimum speech keep quiet/distant speech and one-word replies.
 internal fun localConversationVadConfig(modelPath: String): VadModelConfig =
     VadModelConfig(
         sileroVadModelConfig = SileroVadModelConfig(
             model = modelPath,
-            threshold = 0.5f,
+            threshold = 0.3f,
             minSilenceDuration = 0.4f,
-            minSpeechDuration = 0.2f,
+            minSpeechDuration = 0.1f,
             windowSize = 512,
             maxSpeechDuration = 10.0f,
         ),

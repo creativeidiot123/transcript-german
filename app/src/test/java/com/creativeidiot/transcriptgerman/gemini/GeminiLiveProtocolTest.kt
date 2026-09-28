@@ -31,11 +31,29 @@ class GeminiLiveProtocolTest {
             transcription.getJSONArray("languageCodes").getString(0),
         )
         assertEquals("VERBATIM", transcription.getString("mode"))
+        val realtimeInput = setup.getJSONObject("realtimeInputConfig")
+        val activityDetection =
+            realtimeInput.getJSONObject("automaticActivityDetection")
+        assertEquals(800, activityDetection.getInt("silenceDurationMs"))
+    }
+
+    @Test
+    fun setup_keepsListeningContinuouslyAcrossSpeechPauses() {
+        val realtimeInput = JSONObject(GeminiLiveProtocol.setupMessage())
+            .getJSONObject("setup")
+            .getJSONObject("realtimeInputConfig")
+        val activityDetection =
+            realtimeInput.getJSONObject("automaticActivityDetection")
+
+        assertFalse(activityDetection.optBoolean("disabled", false))
         assertEquals(
-            800,
-            setup.getJSONObject("realtimeInputConfig")
-                .getJSONObject("automaticActivityDetection")
-                .getInt("silenceDurationMs"),
+            "START_SENSITIVITY_HIGH",
+            activityDetection.getString("startOfSpeechSensitivity"),
+        )
+        assertEquals(20, activityDetection.getInt("prefixPaddingMs"))
+        assertEquals(
+            "TURN_INCLUDES_ALL_INPUT",
+            realtimeInput.getString("turnCoverage"),
         )
     }
 

@@ -33,12 +33,20 @@ internal object GeminiLiveProtocol {
                             JSONArray().put("TEXT"),
                         ),
                     )
+                    // Captions must cover all speech until the user taps Stop:
+                    // commit speech starts quickly and keep sub-threshold audio
+                    // between detected turns instead of dropping it.
                     .put(
                         "realtimeInputConfig",
-                        JSONObject().put(
-                            "automaticActivityDetection",
-                            JSONObject().put("silenceDurationMs", 800),
-                        ),
+                        JSONObject()
+                            .put(
+                                "automaticActivityDetection",
+                                JSONObject()
+                                    .put("startOfSpeechSensitivity", "START_SENSITIVITY_HIGH")
+                                    .put("prefixPaddingMs", 20)
+                                    .put("silenceDurationMs", 800),
+                            )
+                            .put("turnCoverage", "TURN_INCLUDES_ALL_INPUT"),
                     )
                     .put(
                         "inputAudioTranscription",

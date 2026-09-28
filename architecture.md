@@ -169,12 +169,16 @@ WebSocket query authentication parameter. No logging interceptor is installed an
 the request URL, key, response body, audio, or transcript.
 
 After WebSocket open, the recognizer sends setup for models/gemini-3.5-transcribe-live with TEXT
-response modality and inputAudioTranscription.languageCodes=[de-DE]. CaptionService does not start
-microphone capture until setupComplete arrives. Google sends server JSON, setupComplete included, as
-binary WebSocket frames, so the recognizer decodes both binary (UTF-8) and text frames through one
-parser. A server close before setupComplete fails setup immediately instead of waiting for the
-connect timeout; Google rejects an invalid key that way (close 1007 with an "API key" reason), which
-maps to the authentication failure. The close code is logged; the close reason is not.
+response modality and inputAudioTranscription.languageCodes=[de-DE]. Server activity detection only
+segments turns; it must not gate what is heard. Setup therefore requests high start-of-speech
+sensitivity, 20 ms prefix padding, and TURN_INCLUDES_ALL_INPUT so audio the server did not yet
+classify as speech after a turn boundary stays in the next turn instead of being dropped.
+CaptionService does not start microphone capture until setupComplete arrives. Google sends server
+JSON, setupComplete included, as binary WebSocket frames, so the recognizer decodes both binary
+(UTF-8) and text frames through one parser. A server close before setupComplete fails setup
+immediately instead of waiting for the connect timeout; Google rejects an invalid key that way
+(close 1007 with an "API key" reason), which maps to the authentication failure. The close code is
+logged; the close reason is not.
 
 Each existing FloatArray audio chunk is converted to raw signed 16-bit little-endian PCM and sent as
 audio/pcm;rate=16000. Before enqueueing another message, the recognizer checks OkHttp's WebSocket

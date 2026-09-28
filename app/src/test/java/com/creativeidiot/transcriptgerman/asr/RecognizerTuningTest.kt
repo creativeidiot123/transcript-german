@@ -7,14 +7,14 @@ import org.junit.Test
 
 class RecognizerTuningTest {
     @Test
-    fun localConversationVad_preservesBriefPausesAndLongerSpeechContext() {
+    fun localConversationVad_hypersensitiveToQuietAndShortSpeech() {
         val config = localConversationVadConfig("silero_vad.onnx")
         val silero = config.sileroVadModelConfig
 
         assertEquals("silero_vad.onnx", silero.model)
-        assertEquals(0.5f, silero.threshold, 0.0f)
+        assertEquals(0.3f, silero.threshold, 0.0f)
         assertEquals(0.4f, silero.minSilenceDuration, 0.0f)
-        assertEquals(0.2f, silero.minSpeechDuration, 0.0f)
+        assertEquals(0.1f, silero.minSpeechDuration, 0.0f)
         assertEquals(10.0f, silero.maxSpeechDuration, 0.0f)
         assertEquals(512, silero.windowSize)
         assertEquals(16_000, config.sampleRate)
