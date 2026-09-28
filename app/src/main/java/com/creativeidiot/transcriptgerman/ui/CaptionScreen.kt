@@ -1,5 +1,8 @@
 package com.creativeidiot.transcriptgerman.ui
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -186,6 +190,7 @@ fun CaptionScreen(
                                 CaptionPair(
                                     german = partialText,
                                     english = state.session.partialEnglishText,
+                                    englishCurrent = state.session.partialEnglishCurrent,
                                     pending = true,
                                     isLive = true,
                                 )
@@ -243,19 +248,35 @@ private fun CaptionPair(
 ) {
     CaptionPair(
         german = line.text,
-        english = line.englishText,
+        english = captionLineEnglish(line, translationPending),
+        englishCurrent = line.englishText != null,
         pending = line.englishText == null && translationPending,
         isLive = false,
     )
 }
 
+// A carried-over partial preview is only shown while the final translation is still coming;
+// after the session stops it must not pose as the finalized line's translation.
+internal fun captionLineEnglish(
+    line: CaptionLine,
+    translationPending: Boolean,
+): String? = line.englishText ?: line.previewEnglishText.takeIf { translationPending }
+
 @Composable
 private fun CaptionPair(
     german: String,
     english: String?,
+    englishCurrent: Boolean,
     pending: Boolean,
     isLive: Boolean,
 ) {
+    // Only the small English label marks trailing English; dimming the sentence itself flashed.
+    val englishLabelAlpha by animateFloatAsState(
+        targetValue = if (english != null && !englishCurrent) STALE_ENGLISH_ALPHA else 1f,
+        // Slow spring: a translation that catches up quickly barely dims instead of pulsing.
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "englishLabelAlpha",
+    )
     val contentColor =
         if (isLive) {
             MaterialTheme.colorScheme.onSecondaryContainer
@@ -295,8 +316,9 @@ private fun CaptionPair(
                 Text(
                     text = stringResource(R.string.caption_language_english),
                     style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.graphicsLayer { alpha = englishLabelAlpha },
                 )
-                Text(
+                ChangedWordsText(
                     text = english ?: if (pending) {
                         stringResource(R.string.translation_pending)
                     } else {
@@ -409,3 +431,5 @@ private fun Controls(
         }
     }
 }
+
+private const val STALE_ENGLISH_ALPHA = 0.5f

@@ -219,8 +219,16 @@ pipeline has a bounded command channel for finalized work and at most one pendin
 Multiple partial submissions before translation catches up collapse to the newest source text.
 
 After any partial translation returns, CaptionSessionStore accepts it only if that German source is
-still the current partial. Final German lines receive stable line IDs and final translations update
-only the matching line.
+still the current partial, and records that source alongside the English. A newer German partial
+keeps the previous English and its source, so the UI can show it dimmed as stale
+(partialEnglishSource != partialText) instead of dropping back to a pending placeholder on every
+word. Final German lines receive stable line IDs and final translations update only the matching
+line. appendFinal copies the last partial English into the new line as previewEnglishText; the final
+translation replaces and clears it, and the UI shows the preview only while translation is pending.
+
+The caption UI dims only the English label while English is stale. ChangedWordsText keeps the
+unchanged leading words of the English steady and fades in the rest; the previously shown text is
+UI-local (remembered per item, updated from SideEffect) and a first composition does not animate.
 
 On explicit user Stop, accepted audio drains, ASR finalization completes, then translation drains
 before the session becomes idle. On failure, the recognizer is closed first so asynchronous Gemini
@@ -230,8 +238,9 @@ and network resources are released in NonCancellable service teardown.
 ## State and durability
 
 CaptionSessionStore is an application-scoped in-memory StateFlow. Each finalized CaptionLine owns
-German source text plus nullable English text while translation is pending. State also contains at
-most one current German partial and nullable English translation.
+German source text plus nullable English text while translation is pending, and an optional preview
+carried over from the live partial. State also contains at most one current German partial plus its
+latest committed English and the German source that English was translated from.
 
 Transcript, partials, and backend selection are not process-durable. Downloaded local models and
 the encrypted Gemini credential are durable app-private feature data. There is no database schema or

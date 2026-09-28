@@ -2,7 +2,9 @@ package com.creativeidiot.transcriptgerman.session
 
 import com.creativeidiot.transcriptgerman.model.AsrBackend
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CaptionSessionStoreTest {
@@ -82,6 +84,72 @@ class CaptionSessionStoreTest {
         store.clearTranscript()
         store.updateFinalTranslation(lineId, "Late translation")
         assertEquals(emptyList<CaptionLine>(), store.state.value.lines)
+    }
+
+    @Test
+    fun newerGermanHypothesis_keepsPreviousEnglishVisibleButMarkedStale() {
+        val store = CaptionSessionStore()
+        store.markStarting(AsrBackend.NEMOTRON)
+        store.markListening()
+
+        store.updatePartial("Guten")
+        store.updatePartialTranslation("Guten", "Good")
+        assertTrue(store.state.value.partialEnglishCurrent)
+
+        store.updatePartial("Guten Morgen")
+        assertEquals("Good", store.state.value.partialEnglishText)
+        assertFalse(store.state.value.partialEnglishCurrent)
+
+        store.updatePartialTranslation("Guten", "Good")
+        assertFalse(store.state.value.partialEnglishCurrent)
+
+        store.updatePartialTranslation("Guten Morgen", "Good morning")
+        assertEquals("Good morning", store.state.value.partialEnglishText)
+        assertTrue(store.state.value.partialEnglishCurrent)
+
+        store.updatePartial("")
+        assertNull(store.state.value.partialEnglishText)
+        assertFalse(store.state.value.partialEnglishCurrent)
+    }
+
+    @Test
+    fun finalizedLine_carriesPartialEnglishPreviewUntilFinalTranslation() {
+        val store = CaptionSessionStore()
+        store.markStarting(AsrBackend.NEMOTRON)
+        store.markListening()
+
+        store.updatePartial("Guten Morgen")
+        store.updatePartialTranslation("Guten Morgen", "Good morning")
+        val lineId = requireNotNull(store.appendFinal("Guten Morgen zusammen."))
+
+        val pendingLine = store.state.value.lines.single()
+        assertNull(pendingLine.englishText)
+        assertEquals("Good morning", pendingLine.previewEnglishText)
+        assertNull(store.state.value.partialEnglishText)
+
+        store.updatePartial("Wie")
+        assertNull(store.state.value.partialEnglishText)
+
+        store.updateFinalTranslation(lineId, "Good morning everyone.")
+        val translatedLine = store.state.value.lines.single()
+        assertEquals("Good morning everyone.", translatedLine.englishText)
+        assertNull(translatedLine.previewEnglishText)
+    }
+
+    @Test
+    fun failureAndStop_clearPartialEnglish() {
+        val store = CaptionSessionStore()
+        store.markStarting(AsrBackend.GEMINI)
+        store.updatePartial("Hallo")
+        store.updatePartialTranslation("Hallo", "Hello")
+
+        store.markFailure(CaptionFailure.GEMINI_CONNECTION)
+        assertNull(store.state.value.partialEnglishText)
+        assertNull(store.state.value.partialEnglishSource)
+
+        store.markStarting(AsrBackend.GEMINI)
+        store.updatePartial("Hallo")
+        assertNull(store.state.value.partialEnglishText)
     }
 
     @Test

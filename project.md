@@ -56,6 +56,13 @@ and streams microphone audio to Google for transcription.
   finalized source.
 - Nemotron speech: current German partial text updates in place; English partial text follows only
   the newest German hypothesis.
+- While a newer German partial is being translated, the previous English stays visible instead of
+  flashing back to "Translating…", and the English label is dimmed until the English for the current
+  German commits. A just-finalized line keeps that last partial English, with the dimmed label,
+  until its own final translation arrives; after the session stops, that preview is never shown as
+  the line's translation.
+- When English text is replaced, words matching the start of the previous English stay steady; only
+  the first changed word and everything after it fade in.
 - Canary speech: finalized German appears after a VAD endpoint with punctuation enabled; English
   follows from the same finalized source.
 - Gemini speech: interim German text updates from Gemini Live; finalized Gemini input transcription
@@ -240,7 +247,9 @@ background auto-start, automatic backend benchmarking, or automatic cloud/local 
 - Uploading microphone audio when Primeline, Nemotron, or Canary is selected.
 - Persisting or logging a plaintext Gemini API key, exposing it through UI state, committing it to
   source/build config, or backing it up.
-- Attaching an English partial translated from an older German hypothesis to newer German text.
+- Attaching an English partial translated from an older German hypothesis to newer German text
+  (showing it as a trailing preview under a visibly dimmed English label until the matching
+  translation commits is allowed).
 - Reordering finalized English translations relative to their German source lines.
 - Silently dropping queued audio/finalized translation work.
 - Silently degrading a requested bilingual session to German-only after translation failure.
