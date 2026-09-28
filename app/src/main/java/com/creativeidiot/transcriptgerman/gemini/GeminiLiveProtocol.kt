@@ -9,6 +9,7 @@ import org.json.JSONObject
 
 internal data class GeminiLiveEvent(
     val setupComplete: Boolean = false,
+    val goAway: Boolean = false,
     val interimText: String? = null,
     val finalText: String? = null,
 )
@@ -93,6 +94,7 @@ internal object GeminiLiveProtocol {
 
         return GeminiLiveEvent(
             setupComplete = root.has("setupComplete"),
+            goAway = root.has("goAway"),
             interimText = serverContent
                 ?.optJSONObject("interimInputTranscription")
                 ?.let { transcription ->
